@@ -48,16 +48,22 @@ fi
 echo "[INFO] Running TypePHP compiler on $PROJECT_FILE ..."
 php "$TPC_PATH" "$PROJECT_FILE"
 
-# 查找生成的二进制
+ALT_OUTPUT_NAME="${OUTPUT_NAME//-/_}"
+
+# 查找生成的二进制（TypePHP 会将连字符转为下划线，如 webman-server -> webman_server）
 COMPILED_BIN=""
-if [ -f "$BUILD_DIR/compiler/$OUTPUT_NAME" ]; then
-    COMPILED_BIN="$BUILD_DIR/compiler/$OUTPUT_NAME"
-elif [ -f "build/$OUTPUT_NAME" ]; then
-    COMPILED_BIN="build/$OUTPUT_NAME"
-elif [ -f "$BUILD_DIR/$OUTPUT_NAME" ]; then
-    COMPILED_BIN="$BUILD_DIR/$OUTPUT_NAME"
-else
-    FOUND_BIN=$(find build .typephp -maxdepth 3 -type f -name "$OUTPUT_NAME" 2>/dev/null | head -n 1 || true)
+for cand in \
+    "$BUILD_DIR/compiler/$OUTPUT_NAME" "$BUILD_DIR/compiler/$ALT_OUTPUT_NAME" \
+    "build/$OUTPUT_NAME" "build/$ALT_OUTPUT_NAME" \
+    "$BUILD_DIR/$OUTPUT_NAME" "$BUILD_DIR/$ALT_OUTPUT_NAME"; do
+    if [ -f "$cand" ]; then
+        COMPILED_BIN="$cand"
+        break
+    fi
+done
+
+if [ -z "$COMPILED_BIN" ]; then
+    FOUND_BIN=$(find build .typephp -maxdepth 3 -type f \( -name "$OUTPUT_NAME" -o -name "$ALT_OUTPUT_NAME" \) 2>/dev/null | head -n 1 || true)
     if [ -n "$FOUND_BIN" ] && [ -f "$FOUND_BIN" ]; then
         COMPILED_BIN="$FOUND_BIN"
     fi
@@ -91,14 +97,17 @@ if [ -f vendor/workerman/webman-framework/src/support/helpers.php ]; then
     mkdir -p "$STAGE_DIR/vendor/workerman/webman-framework/src/support"
     cp -a vendor/workerman/webman-framework/src/support/helpers.php "$STAGE_DIR/vendor/workerman/webman-framework/src/support/helpers.php"
 fi
-if [ -f vendor/workerman/workerman/src/Protocols/Http/Session.php ]; then
-    mkdir -p "$STAGE_DIR/vendor/workerman/workerman/src/Protocols/Http/Session"
-    cp -a vendor/workerman/workerman/src/Protocols/Http/Session.php "$STAGE_DIR/vendor/workerman/workerman/src/Protocols/Http/Session.php"
-    [ -f vendor/workerman/workerman/src/Protocols/Http/Session/FileSessionHandler.php ] && cp -a vendor/workerman/workerman/src/Protocols/Http/Session/FileSessionHandler.php "$STAGE_DIR/vendor/workerman/workerman/src/Protocols/Http/Session/FileSessionHandler.php"
+if [ -d vendor/workerman/workerman/src/Protocols/Http/Session ]; then
+    mkdir -p "$STAGE_DIR/vendor/workerman/workerman/src/Protocols/Http"
+    cp -a vendor/workerman/workerman/src/Protocols/Http/Session "$STAGE_DIR/vendor/workerman/workerman/src/Protocols/Http/"
 fi
-if [ -f vendor/workerman/coroutine/src/Context.php ]; then
-    mkdir -p "$STAGE_DIR/vendor/workerman/coroutine/src"
-    cp -a vendor/workerman/coroutine/src/Context.php "$STAGE_DIR/vendor/workerman/coroutine/src/Context.php"
+if [ -f vendor/workerman/workerman/src/Protocols/Http/Session.php ]; then
+    mkdir -p "$STAGE_DIR/vendor/workerman/workerman/src/Protocols/Http"
+    cp -a vendor/workerman/workerman/src/Protocols/Http/Session.php "$STAGE_DIR/vendor/workerman/workerman/src/Protocols/Http/Session.php"
+fi
+if [ -d vendor/workerman/coroutine/src ]; then
+    mkdir -p "$STAGE_DIR/vendor/workerman/coroutine"
+    cp -a vendor/workerman/coroutine/src "$STAGE_DIR/vendor/workerman/coroutine/"
 fi
 
 FINAL_DIR="$WORKSPACE_DIR/$OUTPUT_DIR"
