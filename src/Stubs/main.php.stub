@@ -31,7 +31,10 @@ function main(): void
         \Workerman\Coroutine\Context\Fiber::initContext();
     }
 
-    // 1. 加载配置（排除 route 延迟加载）
+    // 1. 加载自定义辅助函数与配置（排除 route 延迟加载）
+    if (file_exists(base_path() . '/app/functions.php')) {
+        require_once base_path() . '/app/functions.php';
+    }
     \support\App::loadAllConfig(['route']);
 
     $errorReporting = config('app.error_reporting');

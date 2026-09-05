@@ -72,18 +72,14 @@ class ProjectGenerator
             }
         }
 
-        // 默认忽略列表
-        if (isset($extraConfig['exclude']) && is_array($extraConfig['exclude'])) {
-            $ignores = $extraConfig['exclude'];
-        } elseif (isset($extraConfig['ignore']) && is_array($extraConfig['ignore'])) {
-            $ignores = $extraConfig['ignore'];
-        } else {
-            $ignores = [
+        // 默认忽略列表（无论用户配置如何，框架与动态必须忽略项始终自动补充）
+        $mandatoryIgnores = [
             'config',
             'public',
             'runtime',
             'app/view',
             'app/model',
+            'app/functions.php',
             'app/process/Monitor.php',
             'support',
             'vendor/workerman/webman-framework/src/support/bootstrap.php',
@@ -107,8 +103,15 @@ class ProjectGenerator
             'vendor/workerman/workerman/src/Events/Swow.php',
             'vendor/workerman/coroutine/src/Pool.php',
             'vendor/workerman/coroutine/src/Utils/DestructionWatcher.php',
-            ];
+        ];
+
+        $userIgnores = [];
+        if (isset($extraConfig['exclude']) && is_array($extraConfig['exclude'])) {
+            $userIgnores = $extraConfig['exclude'];
+        } elseif (isset($extraConfig['ignore']) && is_array($extraConfig['ignore'])) {
+            $userIgnores = $extraConfig['ignore'];
         }
+        $ignores = array_unique(array_merge($mandatoryIgnores, $userIgnores));
 
         $outputName = $extraConfig['build']['output_name'] ?? 'webman-server';
 

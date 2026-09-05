@@ -83,6 +83,10 @@ if [ -d app/view ]; then
     mkdir -p "$STAGE_DIR/app"
     cp -a app/view "$STAGE_DIR/app/view"
 fi
+if [ -f app/functions.php ]; then
+    mkdir -p "$STAGE_DIR/app"
+    cp -a app/functions.php "$STAGE_DIR/app/functions.php"
+fi
 
 FINAL_DIR="$WORKSPACE_DIR/$OUTPUT_DIR"
 if [ -e "$FINAL_DIR" ]; then
