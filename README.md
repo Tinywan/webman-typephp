@@ -1,4 +1,4 @@
-﻿# Webman TypePHP AOT 编译打包插件
+# Webman TypePHP AOT 编译打包插件
 
 <div align="center">
 
@@ -7,7 +7,7 @@
 **为 Webman 注入 TypePHP AOT 静态编译能力，生成 6MB 零依赖原生单二进制文件**
 
 <p align="center">
-  <img src="https://img.shields.io/badge/PHP-8.1%2B-8892BF.svg?style=flat-square&logo=php" alt="PHP Version">
+  <img src="https://img.shields.io/badge/PHP-8.5%2B-8892BF.svg?style=flat-square&logo=php" alt="PHP Version">
   <img src="https://img.shields.io/badge/Webman-Plugin-blue.svg?style=flat-square" alt="Webman Plugin">
   <img src="https://img.shields.io/badge/Docker-Builder-2496ED.svg?style=flat-square&logo=docker" alt="Docker">
   <img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="License">

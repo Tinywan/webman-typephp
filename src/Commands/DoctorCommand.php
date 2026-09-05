@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 namespace Tinywan\Typephp\Commands;
 
@@ -23,7 +23,7 @@ class DoctorCommand extends Command
 
         // 1. PHP Version
         $phpVer = PHP_VERSION;
-        $output->writeln("• PHP Version: {$phpVer} " . (version_compare($phpVer, '8.1', '>=') ? '<info>[OK]</info>' : '<error>[FAIL - Requires >= 8.1]</error>'));
+        $output->writeln("• PHP Version: {$phpVer} " . (version_compare($phpVer, '8.5', '>=') ? '<info>[OK]</info>' : '<error>[FAIL - Requires >= 8.5]</error>'));
 
         // 2. Docker Check
         exec('docker --version 2>&1', $dockerOut, $dockerCode);
