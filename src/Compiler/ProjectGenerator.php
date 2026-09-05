@@ -56,13 +56,26 @@ class ProjectGenerator
             'vendor/nikic/fast-route/src/Dispatcher/GroupCountBased.php',
         ];
 
-        // 自动探测 monolog
-        if (is_dir($this->basePath . '/vendor/monolog/monolog/src')) {
-            $sources[] = 'vendor/monolog/monolog/src';
+        if (isset($extraConfig['include']) && is_array($extraConfig['include'])) {
+            $sources = array_merge(['main.php'], $extraConfig['include']);
+        } elseif (isset($extraConfig['sources']) && is_array($extraConfig['sources'])) {
+            $sources = $extraConfig['sources'];
+        }
+
+        // 自动探测 monolog（非显式指定时）
+        if (!isset($extraConfig['include']) && !isset($extraConfig['sources'])) {
+            if (is_dir($this->basePath . '/vendor/monolog/monolog/src')) {
+                $sources[] = 'vendor/monolog/monolog/src';
+            }
         }
 
         // 默认忽略列表
-        $ignores = $extraConfig['ignore'] ?? [
+        if (isset($extraConfig['exclude']) && is_array($extraConfig['exclude'])) {
+            $ignores = $extraConfig['exclude'];
+        } elseif (isset($extraConfig['ignore']) && is_array($extraConfig['ignore'])) {
+            $ignores = $extraConfig['ignore'];
+        } else {
+            $ignores = [
             'config',
             'public',
             'runtime',
@@ -91,7 +104,8 @@ class ProjectGenerator
             'vendor/workerman/workerman/src/Events/Swow.php',
             'vendor/workerman/coroutine/src/Pool.php',
             'vendor/workerman/coroutine/src/Utils/DestructionWatcher.php',
-        ];
+            ];
+        }
 
         $outputName = $extraConfig['build']['output_name'] ?? 'webman-server';
 

@@ -1,65 +1,96 @@
-﻿#!/usr/bin/env bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
 echo "=========================================================="
-echo " [TypePHP Builder] Starting AOT Compilation Pipeline"
+echo " [TypePHP Builder] Starting Portable-Dir Compilation"
 echo "=========================================================="
 
 WORKSPACE_DIR="/workspace"
+BUILD_DIR="$WORKSPACE_DIR/.typephp/build"
+PROJECT_FILE="$BUILD_DIR/project.linux.yml"
+OUTPUT_DIR="${TYPEPHP_OUTPUT_DIR:-dist}"
+OUTPUT_NAME="${TYPEPHP_OUTPUT_NAME:-webman-server}"
+
+# 安全校验环境变量
+case "$OUTPUT_DIR" in ''|/*) echo "[ERROR] Illegal output dir: $OUTPUT_DIR"; exit 2;; esac
+IFS='/' read -r -a output_parts <<< "$OUTPUT_DIR"
+for part in "${output_parts[@]}"; do
+  case "$part" in ''|.|..) echo "[ERROR] Illegal output dir part: $part"; exit 2;; esac
+done
+if [ "${output_parts[0]}" = '.typephp' ]; then
+  echo "[ERROR] Output dir cannot be within .typephp"; exit 2
+fi
+case "$OUTPUT_NAME" in ''|*[!A-Za-z0-9._-]*) echo "[ERROR] Illegal output name: $OUTPUT_NAME"; exit 2;; esac
+
 cd "$WORKSPACE_DIR"
 
-# 1. 确保 project.linux.yml 存在
-if [ ! -f "project.linux.yml" ]; then
-    echo "[ERROR] project.linux.yml not found in workspace!"
+if [ ! -f "$PROJECT_FILE" ]; then
+    echo "[ERROR] $PROJECT_FILE not found in workspace!"
     exit 1
 fi
 
-# 2. 解析 PHP 与 TPC 编译器可执行文件
-PHP_BIN=$(command -v php85 || command -v php)
-if [ -f "./vendor/bin/tpc.php" ]; then
-    TPC_BIN="./vendor/bin/tpc.php"
-elif command -v tpc &> /dev/null; then
-    TPC_BIN="tpc"
+TPC_PATH="/opt/typephp/bin/tpc.php"
+if [ ! -f "$TPC_PATH" ]; then
+    if [ -f "./vendor/bin/tpc.php" ]; then
+        TPC_PATH="./vendor/bin/tpc.php"
+    elif command -v tpc &> /dev/null; then
+        TPC_PATH=$(command -v tpc)
+    else
+        echo "[ERROR] TypePHP compiler (tpc) not found in /opt/typephp or PATH!"
+        exit 1
+    fi
+fi
+
+echo "[INFO] Running TypePHP compiler on $PROJECT_FILE ..."
+php "$TPC_PATH" "$PROJECT_FILE"
+
+# 查找生成的二进制
+COMPILED_BIN=""
+if [ -f "$BUILD_DIR/compiler/$OUTPUT_NAME" ]; then
+    COMPILED_BIN="$BUILD_DIR/compiler/$OUTPUT_NAME"
+elif [ -f "build/$OUTPUT_NAME" ]; then
+    COMPILED_BIN="build/$OUTPUT_NAME"
+elif [ -f "$BUILD_DIR/$OUTPUT_NAME" ]; then
+    COMPILED_BIN="$BUILD_DIR/$OUTPUT_NAME"
 else
-    echo "[ERROR] tpc compiler not found! Please make sure swoole/typephp is installed in composer."
+    FOUND_BIN=$(find build .typephp -maxdepth 3 -type f -name "$OUTPUT_NAME" 2>/dev/null | head -n 1 || true)
+    if [ -n "$FOUND_BIN" ] && [ -f "$FOUND_BIN" ]; then
+        COMPILED_BIN="$FOUND_BIN"
+    fi
+fi
+
+if [ -z "$COMPILED_BIN" ] || [ ! -f "$COMPILED_BIN" ]; then
+    echo "[ERROR] Compiled executable $OUTPUT_NAME not found after tpc compilation!"
     exit 1
 fi
 
-# 3. 执行全静态编译
-echo "[INFO] Running TPC AOT compilation in Musl full-static mode..."
-$PHP_BIN $TPC_BIN project.linux.yml --full-static --compiler=clang
+BUILD_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$"
+STAGE_DIR="$WORKSPACE_DIR/.typephp/out-$BUILD_ID"
+mkdir -p "$STAGE_DIR"
 
-# 4. 组装输出 dist/ 目录
-echo "[INFO] Assembling self-contained dist/ directory..."
-rm -rf dist
-mkdir -p dist
-
-if [ -f "build/webman-server" ]; then
-    cp -f "build/webman-server" "dist/webman-server"
-    chmod +x "dist/webman-server"
-elif [ -f "build/webman_server" ]; then
-    cp -f "build/webman_server" "dist/webman-server"
-    chmod +x "dist/webman-server"
-else
-    echo "[ERROR] Compiled binary not found in build/!"
-    exit 1
+install -m 0755 "$COMPILED_BIN" "$STAGE_DIR/$OUTPUT_NAME"
+if [ -f "$BUILD_DIR/build-manifest.json" ]; then
+    install -m 0644 "$BUILD_DIR/build-manifest.json" "$STAGE_DIR/build-manifest.json"
 fi
 
-# 拷贝静态资源与业务配置
-[ -d config ] && cp -r config dist/
-[ -d public ] && cp -r public dist/
+[ -d config ] && cp -a config "$STAGE_DIR/config"
+[ -d public ] && cp -a public "$STAGE_DIR/public"
 if [ -d app/view ]; then
-    mkdir -p dist/app
-    cp -r app/view dist/app/
+    mkdir -p "$STAGE_DIR/app"
+    cp -a app/view "$STAGE_DIR/app/view"
 fi
 
-# 5. 剥离调试符号瘦身
-if command -v strip &> /dev/null; then
-    echo "[INFO] Stripping debug symbols to minimize binary size..."
-    strip --strip-all dist/webman-server 2>/dev/null || true
+FINAL_DIR="$WORKSPACE_DIR/$OUTPUT_DIR"
+if [ -e "$FINAL_DIR" ]; then
+    if [ "${TYPEPHP_FORCE:-0}" != '1' ]; then
+        echo "[ERROR] Target directory $FINAL_DIR exists and TYPEPHP_FORCE != 1"
+        rm -rf "$STAGE_DIR"
+        exit 1
+    fi
+    mv "$FINAL_DIR" "$WORKSPACE_DIR/.typephp/previous-$BUILD_ID"
 fi
 
+mv "$STAGE_DIR" "$FINAL_DIR"
 echo "=========================================================="
-echo " [SUCCESS] Build completed! Binary: dist/webman-server"
-echo " File size: $(ls -lh dist/webman-server | awk '{print $5}')"
+echo " [SUCCESS] Portable artifact created at: $OUTPUT_DIR/$OUTPUT_NAME"
 echo "=========================================================="

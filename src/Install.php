@@ -46,6 +46,9 @@ class Install
      */
     public static function installByRelation()
     {
+        if (!function_exists('base_path') || !function_exists('copy_dir')) {
+            return;
+        }
         foreach (static::$pathRelation as $source => $dest) {
             $pos = strrpos($dest, '/');
             if ($pos) {
@@ -65,6 +68,9 @@ class Install
      */
     public static function uninstallByRelation()
     {
+        if (!function_exists('base_path') || !function_exists('remove_dir')) {
+            return;
+        }
         foreach (static::$pathRelation as $source => $dest) {
             $path = base_path() . "/{$dest}";
             if (!is_dir($path) && !is_file($path)) {

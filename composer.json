@@ -11,6 +11,7 @@
   ],
   "require": {
     "php": ">=8.4 <8.6",
+    "symfony/process": "^7.0 || ^8.0",
     "workerman/webman-framework": "^1.5.4||^2.0",
     "webman/console": "^1.0||^2.0"
   },
@@ -19,10 +20,27 @@
       "Tinywan\\Typephp\\": "src"
     }
   },
+  "autoload-dev": {
+    "psr-4": {
+      "Tests\\": "tests/"
+    }
+  },
   "require-dev": {
-    "swoole/typephp": "*"
+    "carthage-software/mago": "^1.5",
+    "pestphp/pest": "^4.0"
   },
   "scripts": {
+    "format:check": "mago format --check",
+    "format": "mago format",
+    "lint": "mago lint",
+    "analyze": "mago analyze",
+    "test": "pest",
+    "check": [
+      "@format:check",
+      "@lint",
+      "@analyze",
+      "@test"
+    ],
     "post-package-install": [
       "Tinywan\\Typephp\\Install::install"
     ],
@@ -34,6 +52,10 @@
     ]
   },
   "config": {
+    "allow-plugins": {
+      "pestphp/pest-plugin": true,
+      "carthage-software/mago": true
+    },
     "sort-packages": true
   }
 }

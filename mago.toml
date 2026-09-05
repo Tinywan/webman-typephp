@@ -1,0 +1,6 @@
+[formatter]
+print_width = 120
+tab_width = 4
+
+[linter]
+integrations = ["php"]

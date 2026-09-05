@@ -1,165 +1,127 @@
-﻿# Webman TypePHP AOT 静态编译打包插件与 Docker 构建方案
+# Webman TypePHP 构建插件方案（架构 RFC）
 
-> **项目代号**：`tinywan/webman-typephp`  
-> **配套镜像**：`tinywan/typephp-builder:alpine`  
-> **文档定位**：架构设计与开源落地实施方案 (Architecture RFC)
+**状态：** 第一阶段技术预览方案
 
----
+**包名：** `tinywan/webman-typephp`
 
-## 1. 痛点与破局
+**第一阶段目标：** Linux x86_64 portable-dir（可移植目录）
 
-### 1.1 现状痛点
-1. **心智负担高**：普通 Webman 开发者无法手动在本地配置一套完整的 C++17、Clang、Musl-libc、PHP 8.5 Embed、Swoole PHPX 以及 GMP/MPFR 静态编译链路。
-2. **代码依赖配置繁琐**：不同用户的业务引入了不同的 Composer 包，手动编写 `project.linux.yml` 和 AOT 引导入口 `main.php` 门槛极高。
+## 1. 决策与范围
 
-### 1.2 破局架构：双子星方案
-- **前端门面（Webman 基础插件）**：`tinywan/webman-typephp`
-  负责在宿主机扫描项目代码依赖、自动生成 AOT `main.php` 和 `project.yml`，提供极简命令行。
-- **后端引擎（构建 Docker 镜像）**：`tinywan/typephp-builder:alpine`
-  作为自包含的黑盒编译器，内置完整 Alpine + Clang + PHP 8.5 + Musl 纯静态 SDK，屏蔽所有环境差异。
+插件与构建镜像分工明确：插件负责读取项目配置、生成受约束的 TypePHP
+输入并编排 Docker；构建镜像负责提供固定版本的 TypePHP 编译工具链。插件不
+依赖宿主项目 `require-dev` 中是否安装 TypePHP。
 
----
+第一阶段只验证一条范围明确、可检查的链路：兼容当前 TypePHP 版本和扩展要求的
+Webman 项目，在 Linux x86_64 上生成 portable-dir 技术预览产物。第一阶段不承诺
+任意 Webman 项目、任意动态 PHP 代码或完整 Composer 运行时发现。
 
-## 2. 整体协同工作流
+下列内容均不属于第一阶段承诺：全静态链接、单文件交付、6 MB 体积、零运行时依赖、
+跨平台运行，以及对所有动态特性的兼容。
+
+## 2. 第一阶段契约
+
+输入包括：受支持的 Webman 项目、Docker、显式的 `sources`/`ignore` 配置，以及
+符合所选 TypePHP 版本和扩展要求的应用代码。
+
+默认输出目录如下：
+
+```text
+dist/
+├── webman-server
+├── build-manifest.json
+├── config/                 # 存在时复制
+├── public/                 # 存在时复制
+└── app/view/               # 存在时复制
+```
+
+这是“二进制加运行时资源”的可移植目录，不是单一文件。`build-manifest.json`
+至少记录构建镜像引用、TypePHP/工具链信息、生成器输入、输出设置和输入摘要，
+使构建结果可以追溯。
+
+第一阶段只覆盖明确列出的 Webman 运行时入口和项目输入，不保证反射、运行时
+`require`、动态类名或动态路由、未列出的 Composer 包及未列出的 PHP 扩展。
+
+## 3. 架构与构建流程
 
 ```mermaid
 sequenceDiagram
-    autonumber
-    actor Dev as Webman 开发者
-    participant Plugin as Webman 插件 (tinywan/webman-typephp)
-    participant Docker as 构建镜像 (tinywan/typephp-builder)
-    participant Dist as 输出产物 (dist/webman-server)
-
-    Dev->>Plugin: composer require tinywan/webman-typephp --dev
-    Dev->>Plugin: php webman typephp:package
-    Note over Plugin: 1. 自动扫描当前项目代码与 composer.json<br/>2. 自动生成 project.yml 和 AOT main.php 入口
-    Plugin->>Docker: docker run --rm -v $PWD:/workspace tinywan/typephp-builder:alpine
-    Note over Docker: 3. 容器内就绪工具链调用 tpc 编译<br/>4. Clang 进行 C++ 转译与 Musl 静态链接<br/>5. strip 剥离调试符号
-    Docker-->>Dist: 6. 在项目 dist/ 目录生成 webman-server (6MB)
-    Plugin-->>Dev: 🎉 打包完成！直接执行 ./dist/webman-server start
+    actor Developer as 开发者
+    participant Plugin as Webman 插件
+    participant Docker as 固定 TypePHP 构建镜像
+    participant Artifact as portable-dir
+    Developer->>Plugin: php webman typephp:package
+    Plugin->>Plugin: 生成入口、项目文件和 manifest 输入
+    Plugin->>Docker: docker run（参数数组，挂载工作区）
+    Docker->>Docker: 调用镜像内固定版本的 TypePHP 编译器
+    Docker-->>Artifact: 写入暂存目录，按规则替换输出
 ```
 
----
+插件负责项目输入生成、参数校验、Docker 编排、产物组装和 manifest；镜像负责
+编译器、PHP/PHPX、原生库及其版本固定。构建过程应在 `.typephp/` 下暂存，默认
+拒绝覆盖已有输出，只有显式传入 `--force` 才允许替换。用户输入不得拼接进 shell
+命令，Docker 参数必须按独立参数传递。
 
-## 3. Webman 插件端设计 (`tinywan/webman-typephp`)
+## 4. 构建镜像政策
 
-按照 [Webman 基础插件创建流程](https://www.workerman.net/doc/webman/plugin/create.html) 开发。
+镜像应固定 TypePHP 版本及构建参数，不从挂载项目中查找
+`vendor/bin/tpc.php`。发布 CI 应使用不可变镜像摘要，并记录 TypePHP revision、
+PHP/PHPX/原生库版本、基础镜像摘要、许可证声明和校验和。
 
-### 3.1 目录结构
-```text
-tinywan/webman-typephp/
-├── src/
-│   ├── Commands/
-│   │   ├── PackageCommand.php      # php webman typephp:package
-│   │   ├── DoctorCommand.php       # php webman typephp:doctor (自检)
-│   │   └── InitCiCommand.php       # php webman typephp:init-ci (一键生成 GitHub Action)
-│   ├── Compiler/
-│   │   ├── ProjectGenerator.php    # 自动扫描依赖并生成 project.yml
-│   │   └── EntrypointBuilder.php   # 生成适配 AOT 运行的 main.php
-│   └── Stubs/
-│       ├── main.php.stub           # AOT 核心启动引导模板
-│       └── build.yml.stub          # GitHub Actions 模版
-├── config/plugin/tinywan/typephp/
-│   └── app.php                     # 插件配置（Docker 镜像名、忽略目录等）
-├── composer.json
-└── README.md
+第一阶段只使用已确认的编译器调用约定，不公开未经验证的 `--full-static`、
+`--dynamic` 或编译器选择参数。任何静态链接、体积或部署兼容性结论，都必须有
+可复现的构建和运行验证支持。
+
+## 5. 命令与安全边界
+
+- `php webman typephp:doctor`：检查 PHP 和 Docker 前置条件；Docker 不可用时，
+  第一阶段构建链路应判定为失败。宿主机不要求安装 Clang。
+- `php webman typephp:package [--image=REFERENCE] [--force]`：使用指定或默认
+  构建镜像生成 Linux x86_64 portable-dir。镜像引用必须校验，并作为一个 Docker
+  参数传递。
+- `php webman typephp:init-ci`：生成 Linux x86_64 portable-dir 的 CI 工作流。
+
+构建不得无条件删除项目已有的 `dist/`；不得将未校验的镜像引用、路径或其他用户
+输入插入 shell；输出目录存在时必须遵守覆盖保护。构建日志和 manifest 不得泄露
+密钥、令牌等敏感配置。
+
+## 6. 第一阶段验收标准
+
+1. 使用发布的固定镜像，从一个已知兼容 fixture 完成构建。
+2. 在 Linux x86_64 启动产物，完成 HTTP 冒烟请求，并能正常停止。
+3. 检查 portable-dir 内容和 `build-manifest.json`，确认工具链与输入可追溯。
+4. 覆盖配置、路径、镜像参数和已有输出保护等边界行为。
+5. 使用 Pest 编写测试，并遵循 Mago 格式化、lint 和 analyze 约定。
+
+Composer 脚本约定如下；当前环境依赖未安装时，不将这些命令描述为已经跑通：
+
+```json
+{
+  "format:check": "mago format --check",
+  "format": "mago format",
+  "lint": "mago lint",
+  "analyze": "mago analyze",
+  "test": "pest",
+  "check": ["@format:check", "@lint", "@analyze", "@test"]
+}
 ```
 
-### 3.2 核心命令设计
-- **`php webman typephp:package`**（默认）：
-  检查本地 Docker 环境，挂载当前项目，秒级输出全静态单文件 `dist/webman-server`。
-- **`php webman typephp:package --dynamic`**：
-  打包为带有独立 `.so` 和 `start.sh` 的动态链接发布包。
-- **`php webman typephp:doctor`**：
-  诊断本地环境（PHP 版本、Docker 状态、Clang/MSVC 工具链）。
-- **`php webman typephp:init-ci`**：
-  在 `.github/workflows/` 生成自动化构建流水线，打 Tag 即可自动在 GitHub Releases 发布跨平台包。
+数据库测试安全底线：测试、脚本和测试框架禁止连接生产、真实业务或共享数据库；
+优先使用一次性隔离的 SQLite `:memory:`。执行测试、Schema DDL、迁移或查询前，
+必须确认驱动、主机和数据库名属于隔离测试环境；无法确认时必须中止。禁止绕过
+框架统一测试连接，也禁止对真实或共享数据库执行删除、清空、迁移刷新或其他破坏
+性操作。
 
----
+## 7. 第二阶段路线（已纳入规划，非第一阶段范围）
 
-## 4. Docker 构建镜像设计 (`tinywan/typephp-builder`)
+在扩大兼容性承诺前，第二阶段必须交付：
 
-### 4.1 Dockerfile
-```dockerfile
-FROM alpine:edge
+1. 分析 Composer `installed.php` 和 classmap，生成可审查的 include/exclude 依赖报告。
+2. TypePHP 兼容性预检，以及按项目维护的覆盖配置，让不兼容项可见、可处理。
+3. 扩展支持矩阵和对应 fixtures，覆盖已声明支持的 Webman 功能与扩展组合。
+4. ARM64 构建器和测试覆盖。
+5. 以编译器版本、源码输入 hash、配置 hash 为键的增量构建缓存。
 
-# 1. 安装基础编译工具链与 PHP 8.5 运行时
-RUN apk add --no-cache bash clang lld build-base binutils \
-    pcre2-dev php85 php85-phar php85-openssl php85-tokenizer \
-    php85-ctype php85-mbstring php85-dom php85-xml \
-    php85-simplexml php85-pcntl php85-posix \
-    && ln -sf /usr/bin/php85 /usr/bin/php
-
-# 2. 预置我们在本项目中验证通过的 Musl 全静态 SDK 与 GMP 兼容存根
-COPY sdk /opt/typephp-sdk
-
-# 3. 预置入口脚本
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
-WORKDIR /workspace
-ENTRYPOINT ["/entrypoint.sh"]
-```
-
-### 4.2 容器入口调度 `entrypoint.sh`
-```bash
-#!/usr/bin/env bash
-set -e
-
-echo "[Builder] Starting TypePHP AOT build process..."
-
-# 确保 SDK 环境与软链接
-export PHPX_HOME="/opt/typephp-sdk"
-PHP_BIN=$(command -v php || command -v php85)
-
-# 调用项目中的 tpc 或容器内预装 tpc
-TPC_BIN="./vendor/bin/tpc.php"
-[ ! -f "$TPC_BIN" ] && TPC_BIN="tpc"
-
-# 执行编译
-$PHP_BIN $TPC_BIN project.linux.yml --full-static --compiler=clang
-
-# 组装 dist 目录
-mkdir -p dist
-cp -f build/webman-server dist/webman-server
-chmod +x dist/webman-server
-[ -d config ] && cp -r config dist/
-[ -d public ] && cp -r public dist/
-[ -d app/view ] && mkdir -p dist/app && cp -r app/view dist/app/
-
-# 剥离符号以最小化体积
-strip --strip-all dist/webman-server
-
-echo "[Builder] Successfully built dist/webman-server!"
-```
-
----
-
-## 5. 开发者极致体验 (User Journey)
-
-任何安装了 Webman 的项目，只需以下三步：
-
-```bash
-# 步骤 1：引入插件
-composer require tinywan/webman-typephp --dev
-
-# 步骤 2：一键编译打包（依赖本地 Docker，零环境配置）
-php webman typephp:package
-
-# 步骤 3：在任意 Linux 服务器直接运行
-cd dist
-./webman-server start -d
-```
-
----
-
-## 6. 开源与发布推进路线
-
-1. **Step 1：构建并推送 Docker 镜像**：
-   将当前项目验证完毕的 Musl SDK 封装进 Dockerfile，推送至 Docker Hub：`tinywan/typephp-builder:alpine`。
-2. **Step 2：创建独立插件仓库**：
-   创建 `tinywan/webman-typephp` 代码库，实现基础插件与 Console Command。
-3. **Step 3：发布 Packagist**：
-   在 Packagist 提交插件，支持 `composer require tinywan/webman-typephp`。
-4. **Step 4：入驻 Webman 官方插件市场**：
-   在 [Workerman 官方社区](https://www.workerman.net/app) 申请上架，成为官方推荐的 Webman AOT 原生二进制构建工具！
+全静态构建、资源嵌入和单文件二进制、更多 Linux 兼容性、Windows/macOS 等平台、
+体积目标和 scratch 容器部署，属于第二阶段之后的更后续阶段。每项能力都必须在
+可复现构建、兼容性矩阵和实际部署测试完成后，才能转化为对外承诺。

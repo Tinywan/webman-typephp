@@ -1,14 +1,17 @@
-﻿FROM alpine:edge
+FROM alpine:3.21
 
 LABEL maintainer="Tinywan <756684177@qq.com>"
-LABEL description="TypePHP AOT Static Compiler & Packager Environment for Webman"
+LABEL description="Linux x86_64 TypePHP builder for Webman portable-dir artifacts"
 
-# 1. 安装构建工具链与 PHP 8.5 依赖
-RUN apk add --no-cache bash clang lld build-base binutils \
-    pcre2-dev php85 php85-phar php85-openssl php85-tokenizer \
-    php85-ctype php85-mbstring php85-dom php85-xml \
-    php85-simplexml php85-pcntl php85-posix \
-    && ln -sf /usr/bin/php85 /usr/bin/php
+ARG TYPEPHP_VERSION=v0.7.0
+
+# 1. 安装构建工具链与 PHP 8.4/8.5 依赖环境
+RUN apk add --no-cache bash clang lld build-base binutils git composer \
+    php84 php84-phar php84-openssl php84-tokenizer php84-ctype \
+    php84-mbstring php84-dom php84-xml php84-simplexml php84-pcntl php84-posix \
+    && ln -sf /usr/bin/php84 /usr/local/bin/php \
+    && git clone --depth 1 --branch "${TYPEPHP_VERSION}" https://github.com/swoole/typephp.git /opt/typephp \
+    && cd /opt/typephp && composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
 
 # 2. 预置构建入口调度脚本
 COPY entrypoint.sh /entrypoint.sh
