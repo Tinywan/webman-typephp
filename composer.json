@@ -19,6 +19,9 @@
       "Tinywan\\Typephp\\": "src"
     }
   },
+  "require-dev": {
+    "swoole/typephp": "*"
+  },
   "scripts": {
     "post-package-install": [
       "Tinywan\\Typephp\\Install::install"
