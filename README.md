@@ -108,7 +108,7 @@ return [
     // Docker 编译环境配置
     'docker' => [
         'enabled' => true,
-        'image' => 'tinywan/typephp-builder:alpine',
+        'image' => 'tinywan/typephp-webman-builder:alpine',
     ],
     // 默认输出配置
     'build' => [

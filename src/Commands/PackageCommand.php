@@ -24,7 +24,7 @@ class PackageCommand extends Command
     {
         $this->setName('typephp:package')
             ->setDescription('Build Webman project into a Linux x86_64 portable-dir using TypePHP Docker builder')
-            ->addOption('image', null, InputOption::VALUE_REQUIRED, 'Docker builder image reference', 'tinywan/typephp-builder:alpine')
+            ->addOption('image', null, InputOption::VALUE_REQUIRED, 'Docker builder image reference', 'tinywan/typephp-webman-builder:alpine')
             ->addOption('output-dir', null, InputOption::VALUE_REQUIRED, 'Target output directory relative to project root', 'dist')
             ->addOption('output-name', null, InputOption::VALUE_REQUIRED, 'Target executable name', 'webman-server')
             ->addOption('force', 'f', InputOption::VALUE_NONE, 'Overwrite existing output directory if it already exists');
