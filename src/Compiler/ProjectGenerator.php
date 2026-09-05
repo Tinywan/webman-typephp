@@ -20,7 +20,7 @@ class ProjectGenerator
     /**
      * 生成 main.php AOT 入口
      */
-    public function generateMain(string $targetFile = null): string
+    public function generateMain(?string $targetFile = null): string
     {
         $targetFile = $targetFile ?: $this->basePath . DIRECTORY_SEPARATOR . 'main.php';
         $stubPath = dirname(__DIR__) . '/Stubs/main.php.stub';
