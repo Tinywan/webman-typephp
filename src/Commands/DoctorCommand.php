@@ -29,7 +29,8 @@ class DoctorCommand extends Command
 
         // 1. PHP Version
         $phpVer = PHP_VERSION;
-        $output->writeln("• PHP Version: {$phpVer} " . (version_compare($phpVer, '8.5', '>=') ? '<info>[OK]</info>' : '<error>[FAIL - Requires >= 8.5]</error>'));
+        $isPhpOk = version_compare($phpVer, '8.4', '>=') && version_compare($phpVer, '8.6', '<');
+        $output->writeln("• PHP Version: {$phpVer} " . ($isPhpOk ? '<info>[OK]</info>' : '<error>[FAIL - Requires >= 8.4 and < 8.6]</error>'));
 
         // 2. Docker Check
         exec('docker --version 2>&1', $dockerOut, $dockerCode);
