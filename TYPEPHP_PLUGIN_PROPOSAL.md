@@ -26,7 +26,7 @@ Webman 项目，在 Linux x86_64 上生成 portable-dir 技术预览产物。第
 
 默认输出目录如下：
 
-```text
+```ts
 dist/
 ├── webman-server
 ├── build-manifest.json
