@@ -1,4 +1,10 @@
-﻿<?php
+<?php
+/**
+ * @desc TypePHP 命令行注入配置
+ * @author Tinywan(ShaoBo Wan)
+ * @date 2026/09/05
+ */
+declare(strict_types=1);
 
 use Webman\Console\Command;
 

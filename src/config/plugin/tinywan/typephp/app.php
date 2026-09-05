@@ -1,4 +1,10 @@
-﻿<?php
+<?php
+/**
+ * @desc TypePHP 基础插件配置文件
+ * @author Tinywan(ShaoBo Wan)
+ * @date 2026/09/05
+ */
+declare(strict_types=1);
 
 return [
     'enable' => true,

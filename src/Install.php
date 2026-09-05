@@ -1,4 +1,10 @@
-﻿<?php
+<?php
+/**
+ * @desc Webman 插件生命周期安装与卸载器
+ * @author Tinywan(ShaoBo Wan)
+ * @date 2026/09/05
+ */
+declare(strict_types=1);
 
 namespace Tinywan\Typephp;
 

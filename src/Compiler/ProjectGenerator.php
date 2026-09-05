@@ -1,4 +1,10 @@
-﻿<?php
+<?php
+/**
+ * @desc TypePHP AOT 编译配置与项目入口生成器
+ * @author Tinywan(ShaoBo Wan)
+ * @date 2026/09/05
+ */
+declare(strict_types=1);
 
 namespace Tinywan\Typephp\Compiler;
 

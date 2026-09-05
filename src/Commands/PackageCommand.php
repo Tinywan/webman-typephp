@@ -1,4 +1,10 @@
-﻿<?php
+<?php
+/**
+ * @desc TypePHP 打包构建命令
+ * @author Tinywan(ShaoBo Wan)
+ * @date 2026/09/05
+ */
+declare(strict_types=1);
 
 namespace Tinywan\Typephp\Commands;
 
