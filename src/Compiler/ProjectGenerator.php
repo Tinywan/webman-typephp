@@ -82,6 +82,7 @@ class ProjectGenerator
             'app/functions.php',
             'app/process/Monitor.php',
             'support',
+            'vendor/workerman/webman-framework/src/support/helpers.php',
             'vendor/workerman/webman-framework/src/support/bootstrap.php',
             'vendor/workerman/webman-framework/src/start.php',
             'vendor/workerman/webman-framework/src/windows.php',

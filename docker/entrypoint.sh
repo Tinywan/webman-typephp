@@ -87,6 +87,15 @@ if [ -f app/functions.php ]; then
     mkdir -p "$STAGE_DIR/app"
     cp -a app/functions.php "$STAGE_DIR/app/functions.php"
 fi
+if [ -f vendor/workerman/webman-framework/src/support/helpers.php ]; then
+    mkdir -p "$STAGE_DIR/vendor/workerman/webman-framework/src/support"
+    cp -a vendor/workerman/webman-framework/src/support/helpers.php "$STAGE_DIR/vendor/workerman/webman-framework/src/support/helpers.php"
+fi
+if [ -f vendor/workerman/workerman/src/Protocols/Http/Session.php ]; then
+    mkdir -p "$STAGE_DIR/vendor/workerman/workerman/src/Protocols/Http/Session"
+    cp -a vendor/workerman/workerman/src/Protocols/Http/Session.php "$STAGE_DIR/vendor/workerman/workerman/src/Protocols/Http/Session.php"
+    [ -f vendor/workerman/workerman/src/Protocols/Http/Session/FileSessionHandler.php ] && cp -a vendor/workerman/workerman/src/Protocols/Http/Session/FileSessionHandler.php "$STAGE_DIR/vendor/workerman/workerman/src/Protocols/Http/Session/FileSessionHandler.php"
+fi
 
 FINAL_DIR="$WORKSPACE_DIR/$OUTPUT_DIR"
 if [ -e "$FINAL_DIR" ]; then

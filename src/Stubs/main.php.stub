@@ -8,6 +8,11 @@ function main(): void
         define('BASE_PATH', getcwd());
     }
 
+    // 0. 载入 Webman 运行时辅助函数库
+    $helpersFile = BASE_PATH . '/vendor/workerman/webman-framework/src/support/helpers.php';
+    if (file_exists($helpersFile)) {
+        require_once $helpersFile;
+    }
     ini_set('display_errors', 'on');
     error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);
 
