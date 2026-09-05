@@ -100,7 +100,7 @@ class ProjectGenerator
             'vendor/workerman/coroutine/src/Channel/Swow.php',
             'vendor/workerman/coroutine/src/Context/Swow.php',
             'vendor/workerman/coroutine/src/Coroutine/Swow.php',
-            'vendor/workerman/coroutine/src/WaitGroup/Swow.php',
+            'vendor/workerman/coroutine/src/Context.php',
             'vendor/workerman/workerman/src/Protocols/Http/Session.php',
             'vendor/workerman/workerman/src/Protocols/Http/Session/FileSessionHandler.php',
             'vendor/workerman/workerman/src/Events/Swow.php',

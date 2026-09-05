@@ -37,6 +37,10 @@ function main(): void
     if (class_exists(\Workerman\Coroutine\Fiber::class)) {
         \Workerman\Coroutine\Fiber::init();
     }
+    $coroutineContextFile = base_path() . '/vendor/workerman/coroutine/src/Context.php';
+    if (file_exists($coroutineContextFile)) {
+        require_once $coroutineContextFile;
+    }
     if (class_exists(\Workerman\Coroutine\Context::class)) {
         \Workerman\Coroutine\Context::initDriver();
     }

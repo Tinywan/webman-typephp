@@ -96,6 +96,10 @@ if [ -f vendor/workerman/workerman/src/Protocols/Http/Session.php ]; then
     cp -a vendor/workerman/workerman/src/Protocols/Http/Session.php "$STAGE_DIR/vendor/workerman/workerman/src/Protocols/Http/Session.php"
     [ -f vendor/workerman/workerman/src/Protocols/Http/Session/FileSessionHandler.php ] && cp -a vendor/workerman/workerman/src/Protocols/Http/Session/FileSessionHandler.php "$STAGE_DIR/vendor/workerman/workerman/src/Protocols/Http/Session/FileSessionHandler.php"
 fi
+if [ -f vendor/workerman/coroutine/src/Context.php ]; then
+    mkdir -p "$STAGE_DIR/vendor/workerman/coroutine/src"
+    cp -a vendor/workerman/coroutine/src/Context.php "$STAGE_DIR/vendor/workerman/coroutine/src/Context.php"
+fi
 
 FINAL_DIR="$WORKSPACE_DIR/$OUTPUT_DIR"
 if [ -e "$FINAL_DIR" ]; then
