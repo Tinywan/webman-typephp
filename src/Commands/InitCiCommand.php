@@ -22,12 +22,18 @@ class InitCiCommand extends Command
     {
         $this->setName('typephp:init-ci')
             ->setDescription('Generate GitHub Actions CI workflow for automatic Linux portable-dir release')
+            ->addOption('path', null, InputOption::VALUE_OPTIONAL, 'Target project directory path', null)
             ->addOption('force', 'f', InputOption::VALUE_NONE, 'Overwrite existing workflow file if present');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $basePath = function_exists('base_path') ? base_path() : getcwd();
+        $customPath = $input->getOption('path');
+        if ($customPath) {
+            $basePath = rtrim((string)$customPath, '/\\');
+        } else {
+            $basePath = function_exists('base_path') ? base_path() : getcwd();
+        }
         $targetDir = $basePath . DIRECTORY_SEPARATOR . '.github' . DIRECTORY_SEPARATOR . 'workflows';
         if (!is_dir($targetDir)) {
             mkdir($targetDir, 0777, true);
