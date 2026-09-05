@@ -25,7 +25,10 @@ class ProjectGenerator
         $targetFile = $targetFile ?: $this->basePath . DIRECTORY_SEPARATOR . 'main.php';
         $stubPath = dirname(__DIR__) . '/Stubs/main.php.stub';
         if (!file_exists($targetFile)) {
-            copy($stubPath, $targetFile);
+            $content = file_get_contents($stubPath);
+            // 彻底去除任何可能的 UTF-8 BOM 头 (EF BB BF)
+            $content = preg_replace('/^\xEF\xBB\xBF/', '', $content);
+            file_put_contents($targetFile, $content);
         }
         return $targetFile;
     }
