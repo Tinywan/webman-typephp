@@ -12,6 +12,14 @@ function main(): void
     error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);
 
     // 0. 初始化 Workerman 协议与协程组件
+    $sessionFile = base_path() . '/vendor/workerman/workerman/src/Protocols/Http/Session.php';
+    if (file_exists($sessionFile)) {
+        require_once $sessionFile;
+    }
+    $fileHandlerFile = base_path() . '/vendor/workerman/workerman/src/Protocols/Http/Session/FileSessionHandler.php';
+    if (file_exists($fileHandlerFile)) {
+        require_once $fileHandlerFile;
+    }
     if (class_exists(\Workerman\Protocols\Http\Session::class)) {
         \Workerman\Protocols\Http\Session::init();
     }
