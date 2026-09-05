@@ -98,9 +98,9 @@ class PackageCommand extends Command
         }
         $projectYmlPath = $generator->generateProjectYml($extraConfig);
 
-        // 拷贝 project.linux.yml 到 .typephp/build/
+        // 确保 project.linux.yml 保存在项目根目录，供 tpc 以项目根目录为基准直接解析
         copy($projectYmlPath, $stageBuildDir . DIRECTORY_SEPARATOR . 'project.linux.yml');
-        $output->writeln('<comment>[2/3] Generated compiler config: .typephp/build/project.linux.yml</comment>');
+        $output->writeln('<comment>[2/3] Generated compiler config: project.linux.yml</comment>');
 
         // 生成 build-manifest.json 记录元数据
         $manifest = [

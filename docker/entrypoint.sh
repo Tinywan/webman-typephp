@@ -7,7 +7,6 @@ echo "=========================================================="
 
 WORKSPACE_DIR="/workspace"
 BUILD_DIR="$WORKSPACE_DIR/.typephp/build"
-PROJECT_FILE="$BUILD_DIR/project.linux.yml"
 OUTPUT_DIR="${TYPEPHP_OUTPUT_DIR:-dist}"
 OUTPUT_NAME="${TYPEPHP_OUTPUT_NAME:-webman-server}"
 
@@ -22,10 +21,15 @@ if [ "${output_parts[0]}" = '.typephp' ]; then
 fi
 case "$OUTPUT_NAME" in ''|*[!A-Za-z0-9._-]*) echo "[ERROR] Illegal output name: $OUTPUT_NAME"; exit 2;; esac
 
+PROJECT_FILE="$WORKSPACE_DIR/project.linux.yml"
+if [ ! -f "$PROJECT_FILE" ]; then
+    PROJECT_FILE="$BUILD_DIR/project.linux.yml"
+fi
+
 cd "$WORKSPACE_DIR"
 
 if [ ! -f "$PROJECT_FILE" ]; then
-    echo "[ERROR] $PROJECT_FILE not found in workspace!"
+    echo "[ERROR] project.linux.yml not found in workspace root or .typephp/build/!"
     exit 1
 fi
 
