@@ -1,0 +1,76 @@
+﻿<?php
+use support\App;
+use Workerman\Worker;
+
+function main(): void
+{
+    if (!defined('BASE_PATH')) {
+        define('BASE_PATH', getcwd());
+    }
+
+    ini_set('display_errors', 'on');
+    error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);
+
+    // 0. 初始化 Workerman 协议与协程组件
+    if (class_exists(\Workerman\Protocols\Http\Session::class)) {
+        \Workerman\Protocols\Http\Session::init();
+    }
+    if (class_exists(\Workerman\Protocols\Http\Session\FileSessionHandler::class)) {
+        \Workerman\Protocols\Http\Session\FileSessionHandler::init();
+    }
+    if (class_exists(\Workerman\Coroutine::class)) {
+        \Workerman\Coroutine::init();
+    }
+    if (class_exists(\Workerman\Coroutine\Fiber::class)) {
+        \Workerman\Coroutine\Fiber::init();
+    }
+    if (class_exists(\Workerman\Coroutine\Context::class)) {
+        \Workerman\Coroutine\Context::initDriver();
+    }
+    if (class_exists(\Workerman\Coroutine\Context\Fiber::class)) {
+        \Workerman\Coroutine\Context\Fiber::initContext();
+    }
+
+    // 1. 加载配置（排除 route 延迟加载）
+    \support\App::loadAllConfig(['route']);
+
+    $errorReporting = config('app.error_reporting');
+    if (isset($errorReporting)) {
+        error_reporting($errorReporting);
+    }
+
+    // 2. 确保 runtime 目录
+    $runtimeLogsPath = runtime_path() . DIRECTORY_SEPARATOR . 'logs';
+    if (!is_dir($runtimeLogsPath)) {
+        @mkdir($runtimeLogsPath, 0777, true);
+    }
+    $runtimeViewsPath = runtime_path() . DIRECTORY_SEPARATOR . 'views';
+    if (!is_dir($runtimeViewsPath)) {
+        @mkdir($runtimeViewsPath, 0777, true);
+    }
+
+    // 3. 配置 Workerman 服务属性
+    $serverConfig = config('server', []);
+    \Workerman\Worker::$pidFile = $serverConfig['pid_file'] ?? (runtime_path() . '/webman.pid');
+    \Workerman\Worker::$statusFile = $serverConfig['status_file'] ?? (runtime_path() . '/webman.status');
+    \Workerman\Worker::$stdoutFile = $serverConfig['stdout_file'] ?? (runtime_path() . '/logs/stdout.log');
+    \Workerman\Worker::$logFile = $serverConfig['log_file'] ?? (runtime_path() . '/logs/workerman.log');
+
+    // 4. 加载中间件与路由表
+    \Webman\Middleware::load(config('middleware', []));
+    \Webman\Middleware::load(['__static__' => config('static.middleware', [])]);
+    \Webman\Route::load([config_path()]);
+
+    // 5. 启动 Webman HTTP 进程
+    $process = config('process', []);
+    if (isset($process['webman'])) {
+        worker_start('webman', $process['webman']);
+    } else {
+        foreach ($process as $processName => $procConfig) {
+            worker_start($processName, $procConfig);
+        }
+    }
+
+    // 6. 进入事件循环监听
+    \Workerman\Worker::runAll();
+}
