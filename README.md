@@ -1,15 +1,3 @@
-## Docker builder release
-
-The default builder is `tinywan/typephp-webman-builder:v0.0.10`. Builder
-images use exact version tags only; this project does not publish floating
-`latest` or `alpine` tags.
-
-Configure repository secrets `DOCKER_USERNAME` and `DOCKER_PASSWORD` to
-publish. `DOCKER_PASSWORD` must be a Docker Hub access token, not an account
-password. Pushing a validated Git tag such as `v0.0.10` publishes only the
-matching Linux/amd64 tag. Manual dispatch requires an explicit valid
-`vMAJOR.MINOR.PATCH` version and exposes whether it will push.
-
 <div align="center">
 
 # Webman TypePHP AOT 构建插件
@@ -76,7 +64,9 @@ php webman typephp:package --force
 
 ```text
 dist/
-├── webman-server            # AOT 编译生成的原生机器码二进制程序
+├── webman-server.bin        # AOT 编译生成的原生机器码二进制程序
+├── start.sh                 # 设置运行库路径并启动二进制程序
+├── lib/                     # 随包发布的非平台动态依赖
 ├── build-manifest.json      # 构建元数据清单（记录输入摘要、镜像版本与编译时间）
 ├── config/                  # 运行时业务配置
 ├── public/                  # 静态静态资源托管
@@ -91,15 +81,15 @@ dist/
 cd dist
 
 # 前台调试启动
-./webman-server start
+./start.sh start
 
 # 守护进程（后台）启动
-./webman-server start -d
+./start.sh start -d
 
 # 查看运行状态与停止
-./webman-server status
-./webman-server stop
-./webman-server restart
+./start.sh status
+./start.sh stop
+./start.sh restart
 ```
 
 ## 🛠️ 命令列表
@@ -138,6 +128,14 @@ return [
     ]
 ];
 ```
+
+## 🐳 Docker 构建镜像发布
+
+默认构建镜像为 `tinywan/typephp-webman-builder:v0.0.10`。镜像仅发布与 Git tag 完全一致的版本标签，不发布 `latest`、`alpine` 等浮动标签。
+
+仓库维护者需要在 GitHub 中配置 `DOCKER_USERNAME` 和 `DOCKER_PASSWORD`。其中 `DOCKER_PASSWORD` 必须使用 Docker Hub Access Token，不能使用账户登录密码。推送符合 `vMAJOR.MINOR.PATCH` 格式的 Git tag（例如 `v0.0.10`）后，GitHub Actions 会自动构建并仅推送同名的 Linux amd64 镜像。也可以手动运行工作流，并明确指定版本以及是否推送。
+
+完整发布步骤参见 [RELEASING.md](RELEASING.md)。
 
 ## 🧪 代码质量与测试
 
