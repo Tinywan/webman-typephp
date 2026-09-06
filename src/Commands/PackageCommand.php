@@ -1,4 +1,5 @@
 <?php
+
 /**
  * @desc TypePHP 打包构建命令
  * @author Tinywan(ShaoBo Wan)
@@ -15,6 +16,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Process\Process;
 use Tinywan\Typephp\Compiler\ProjectGenerator;
 
+// @mago-ignore lint:cyclomatic-complexity -- The command deliberately coordinates validation, manifest generation, and Docker invocation.
 class PackageCommand extends Command
 {
     protected static $defaultName = 'typephp:package';
@@ -22,45 +24,75 @@ class PackageCommand extends Command
 
     protected function configure(): void
     {
-        $this->setName('typephp:package')
+        $this
+            ->setName('typephp:package')
             ->setDescription('Build Webman project into a Linux x86_64 portable-dir using TypePHP Docker builder')
-            ->addOption('image', null, InputOption::VALUE_REQUIRED, 'Docker builder image reference', 'tinywan/typephp-webman-builder:alpine')
-            ->addOption('output-dir', null, InputOption::VALUE_REQUIRED, 'Target output directory relative to project root', 'dist')
+            ->addOption(
+                'image',
+                null,
+                InputOption::VALUE_REQUIRED,
+                'Docker builder image reference',
+                'tinywan/typephp-webman-builder:v0.0.10',
+            )
+            ->addOption(
+                'output-dir',
+                null,
+                InputOption::VALUE_REQUIRED,
+                'Target output directory relative to project root',
+                'dist',
+            )
             ->addOption('output-name', null, InputOption::VALUE_REQUIRED, 'Target executable name', 'webman-server')
-            ->addOption('force', 'f', InputOption::VALUE_NONE, 'Overwrite existing output directory if it already exists');
+            ->addOption(
+                'force',
+                'f',
+                InputOption::VALUE_NONE,
+                'Overwrite existing output directory if it already exists',
+            );
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $image = (string)$input->getOption('image');
-        $outputDir = trim((string)$input->getOption('output-dir'), '/\\');
-        $outputName = (string)$input->getOption('output-name');
-        $force = (bool)$input->getOption('force');
+        $image = (string) $input->getOption('image');
+        $outputDir = trim((string) $input->getOption('output-dir'), '/\\');
+        $outputName = (string) $input->getOption('output-name');
+        $force = (bool) $input->getOption('force');
 
         // 1. 严格参数校验，防止任何路径穿越或格式错误
         if (!preg_match('/^[A-Za-z0-9._-]+$/', $outputName)) {
-            $output->writeln("<error>[ERROR] Invalid output-name: '{$outputName}'. Only alphanumeric and ._- allowed.</error>");
+            $output->writeln(
+                "<error>[ERROR] Invalid output-name: '{$outputName}'. Only alphanumeric and ._- allowed.</error>",
+            );
             return Command::FAILURE;
         }
 
-        if ($outputDir === '' || $outputDir === '.typephp' || str_starts_with($outputDir, '.typephp/') || str_contains($outputDir, '..')) {
-            $output->writeln("<error>[ERROR] Invalid output-dir: '{$outputDir}'. Relative path without .. and not inside .typephp required.</error>");
+        if (
+            $outputDir === ''
+            || $outputDir === '.typephp'
+            || str_starts_with($outputDir, '.typephp/')
+            || str_contains($outputDir, '..')
+        ) {
+            $output->writeln(
+                "<error>[ERROR] Invalid output-dir: '{$outputDir}'. Relative path without .. and not inside .typephp required.</error>",
+            );
             return Command::FAILURE;
         }
 
         // 镜像引用格式检查（防止注入）
-        if (!preg_match('/^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)*(?::[a-zA-Z0-9_.-]+)?$/', $image)) {
+        if (!preg_match(
+            '/^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)*(?::[a-zA-Z0-9_.-]+)?(?:@sha256:[a-f0-9]{64})?$/',
+            $image,
+        )) {
             $output->writeln("<error>[ERROR] Invalid Docker image reference: '{$image}'.</error>");
             return Command::FAILURE;
         }
 
-        $basePath = function_exists('base_path') ? base_path() : getcwd();
+        $basePath = (string) (function_exists('base_path') ? base_path() : getcwd());
         $targetDist = $basePath . DIRECTORY_SEPARATOR . $outputDir;
 
         // 2. 已有输出目录保护检查
         if (is_dir($targetDist) && !$force) {
             $output->writeln("<error>[ERROR] Target output directory '{$outputDir}' already exists!</error>");
-            $output->writeln("<comment>Use --force (-f) flag if you explicitly wish to overwrite it.</comment>");
+            $output->writeln('<comment>Use --force (-f) flag if you explicitly wish to overwrite it.</comment>');
             return Command::FAILURE;
         }
 
@@ -68,7 +100,9 @@ class PackageCommand extends Command
         $dockerCheck = new Process(['docker', '--version']);
         $dockerCheck->run();
         if (!$dockerCheck->isSuccessful()) {
-            $output->writeln('<error>[ERROR] Docker is required for TypePHP Phase 1 build but not found or not running!</error>');
+            $output->writeln(
+                '<error>[ERROR] Docker is required for TypePHP Phase 1 build but not found or not running!</error>',
+            );
             return Command::FAILURE;
         }
 
@@ -90,11 +124,13 @@ class PackageCommand extends Command
         $extraConfig = [
             'build' => [
                 'output_name' => $outputName,
-            ]
+            ],
         ];
         if (function_exists('config')) {
             $pluginConfig = config('plugin.tinywan.typephp.app', []);
-            $extraConfig = array_replace_recursive($pluginConfig, $extraConfig);
+            if (is_array($pluginConfig)) {
+                $extraConfig = array_replace_recursive($pluginConfig, $extraConfig);
+            }
         }
         $projectYmlPath = $generator->generateProjectYml($extraConfig);
 
@@ -115,10 +151,10 @@ class PackageCommand extends Command
                 'config_hash' => sha1_file($projectYmlPath),
             ],
         ];
-        file_put_contents(
-            $stageBuildDir . DIRECTORY_SEPARATOR . 'build-manifest.json',
-            json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
-        );
+        file_put_contents($stageBuildDir . DIRECTORY_SEPARATOR . 'build-manifest.json', json_encode(
+            $manifest,
+            JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES,
+        ));
 
         // 5. 编排并运行 Docker 命令（参数数组隔离，绝无字符串拼接）
         $output->writeln("<info>[3/3] Running TypePHP AOT compilation container ({$image})...</info>");
@@ -127,6 +163,8 @@ class PackageCommand extends Command
             'docker',
             'run',
             '--rm',
+            '--platform',
+            'linux/amd64',
             '-v',
             $basePath . ':/workspace',
             '-w',
@@ -137,7 +175,7 @@ class PackageCommand extends Command
             'TYPEPHP_OUTPUT_NAME=' . $outputName,
             '-e',
             'TYPEPHP_FORCE=' . ($force ? '1' : '0'),
-            $image
+            $image,
         ];
 
         $process = new Process($dockerArgs, $basePath, null, null, 1800);
@@ -147,7 +185,7 @@ class PackageCommand extends Command
 
         if ($process->isSuccessful()) {
             $output->writeln("<info>🎉 Successfully built portable-dir: {$outputDir}/{$outputName}</info>");
-            $output->writeln("<info>Run command: ./$outputDir/$outputName start</info>");
+            $output->writeln("<info>Run command: cd $outputDir && ./start.sh start</info>");
             return Command::SUCCESS;
         }
 

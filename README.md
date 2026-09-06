@@ -1,3 +1,15 @@
+## Docker builder release
+
+The default builder is `tinywan/typephp-webman-builder:v0.0.10`. Builder
+images use exact version tags only; this project does not publish floating
+`latest` or `alpine` tags.
+
+Configure repository secrets `DOCKER_USERNAME` and `DOCKER_PASSWORD` to
+publish. `DOCKER_PASSWORD` must be a Docker Hub access token, not an account
+password. Pushing a validated Git tag such as `v0.0.10` publishes only the
+matching Linux/amd64 tag. Manual dispatch requires an explicit valid
+`vMAJOR.MINOR.PATCH` version and exposes whether it will push.
+
 <div align="center">
 
 # Webman TypePHP AOT 构建插件
@@ -108,7 +120,7 @@ return [
     // Docker 编译环境配置
     'docker' => [
         'enabled' => true,
-        'image' => 'tinywan/typephp-webman-builder:alpine',
+        'image' => 'tinywan/typephp-webman-builder:v0.0.10',
     ],
     // 默认输出配置
     'build' => [

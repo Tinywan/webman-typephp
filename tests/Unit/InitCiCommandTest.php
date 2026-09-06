@@ -18,17 +18,27 @@ it('generates github actions workflow file', function (): void {
     try {
         $tester->execute(['--path' => $tempDir]);
         $output = $tester->getDisplay();
-        expect($output)->toContain('Created GitHub Actions workflow')
-            ->and(file_exists($tempDir . '/.github/workflows/typephp-build.yml'))->toBeTrue();
+        expect($output)
+            ->toContain('Created GitHub Actions workflow')
+            ->and(file_exists($tempDir . '/.github/workflows/typephp-build.yml'))
+            ->toBeTrue();
 
         $content = file_get_contents($tempDir . '/.github/workflows/typephp-build.yml');
-        expect($content)->toContain('TypePHP Automated Build & Release')
+        expect($content)
+            ->toContain('TypePHP Automated Build & Release')
             ->toContain('php webman typephp:package --force');
     } finally {
-        chdir($oldCwd);
-        @unlink($tempDir . '/.github/workflows/typephp-build.yml');
-        @rmdir($tempDir . '/.github/workflows');
-        @rmdir($tempDir . '/.github');
-        @rmdir($tempDir);
+        if ($oldCwd !== false) {
+            chdir($oldCwd);
+        }
+        $workflow = $tempDir . '/.github/workflows/typephp-build.yml';
+        if (is_file($workflow)) {
+            unlink($workflow);
+        }
+        foreach ([$tempDir . '/.github/workflows', $tempDir . '/.github', $tempDir] as $directory) {
+            if (is_dir($directory)) {
+                rmdir($directory);
+            }
+        }
     }
 });

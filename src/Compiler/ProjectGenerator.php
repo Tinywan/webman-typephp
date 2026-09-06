@@ -1,4 +1,5 @@
 <?php
+
 /**
  * @desc TypePHP AOT 编译配置与项目入口生成器
  * @author Tinywan(ShaoBo Wan)
@@ -8,6 +9,7 @@ declare(strict_types=1);
 
 namespace Tinywan\Typephp\Compiler;
 
+// @mago-ignore lint:cyclomatic-complexity -- The explicit compatibility matrix is intentionally kept together for review.
 class ProjectGenerator
 {
     protected string $basePath;
@@ -26,6 +28,9 @@ class ProjectGenerator
         $stubPath = dirname(__DIR__) . '/Stubs/main.php.stub';
         if (!file_exists($targetFile)) {
             $content = file_get_contents($stubPath);
+            if ($content === false) {
+                throw new \RuntimeException('Unable to read the TypePHP main.php stub.');
+            }
             // 彻底去除任何可能的 UTF-8 BOM 头 (EF BB BF)
             $content = preg_replace('/^\xEF\xBB\xBF/', '', $content);
             file_put_contents($targetFile, $content);
@@ -45,7 +50,6 @@ class ProjectGenerator
             'vendor/workerman/webman-framework/src',
             'vendor/workerman/coroutine/src',
             'vendor/psr',
-            'vendor/nikic/fast-route/src/functions.php',
             'vendor/nikic/fast-route/src/BadRouteException.php',
             'vendor/nikic/fast-route/src/DataGenerator.php',
             'vendor/nikic/fast-route/src/Dispatcher.php',
@@ -65,10 +69,16 @@ class ProjectGenerator
             $sources = $extraConfig['sources'];
         }
 
-        // 自动探测 monolog（非显式指定时）
+        // 自动探测 monolog 与 webman-mcp 等常用库
         if (!isset($extraConfig['include']) && !isset($extraConfig['sources'])) {
             if (is_dir($this->basePath . '/vendor/monolog/monolog/src')) {
                 $sources[] = 'vendor/monolog/monolog/src';
+            }
+            if (is_dir($this->basePath . '/vendor/tinywan/webman-mcp/src')) {
+                $sources[] = 'vendor/tinywan/webman-mcp/src';
+            }
+            if (is_dir($this->basePath . '/vendor/neuron-core/neuron-ai/src')) {
+                $sources[] = 'vendor/neuron-core/neuron-ai/src';
             }
         }
 
@@ -79,6 +89,7 @@ class ProjectGenerator
             'runtime',
             'app/view',
             'app/model',
+            'app/command',
             'app/functions.php',
             'app/process/Monitor.php',
             'support',
@@ -87,6 +98,7 @@ class ProjectGenerator
             'vendor/workerman/webman-framework/src/start.php',
             'vendor/workerman/webman-framework/src/windows.php',
             'vendor/workerman/webman-framework/src/Install.php',
+            'vendor/nikic/fast-route/src/functions.php',
             'vendor/nikic/fast-route/src/bootstrap.php',
             'vendor/nikic/fast-route/src/DataGenerator/CharCountBased.php',
             'vendor/nikic/fast-route/src/DataGenerator/GroupPosBased.php',
@@ -100,16 +112,24 @@ class ProjectGenerator
             'vendor/workerman/coroutine/src/Channel/Swow.php',
             'vendor/workerman/coroutine/src/Context/Swow.php',
             'vendor/workerman/coroutine/src/Coroutine/Swow.php',
-            'vendor/workerman/coroutine/src/Context.php',
-            'vendor/workerman/coroutine/src/Coroutine.php',
-            'vendor/workerman/coroutine/src/Context/Fiber.php',
-            'vendor/workerman/coroutine/src/Context/Swow.php',
-            'vendor/workerman/coroutine/src/Coroutine/Fiber.php',
+            'vendor/workerman/coroutine/src/WaitGroup/Swow.php',
             'vendor/workerman/workerman/src/Protocols/Http/Session.php',
             'vendor/workerman/workerman/src/Protocols/Http/Session/FileSessionHandler.php',
             'vendor/workerman/workerman/src/Events/Swow.php',
             'vendor/workerman/coroutine/src/Pool.php',
             'vendor/workerman/coroutine/src/Utils/DestructionWatcher.php',
+            'vendor/tinywan/webman-mcp/src/config',
+            'vendor/tinywan/webman-mcp/src/Install.php',
+            'vendor/tinywan/webman-mcp/src/Command',
+            'vendor/neuron-core/neuron-ai/src/Console',
+            'vendor/neuron-core/neuron-ai/src/Providers',
+            'vendor/neuron-core/neuron-ai/src/Workflow',
+            'vendor/neuron-core/neuron-ai/src/Evaluation',
+            'vendor/neuron-core/neuron-ai/src/Testing',
+            'vendor/neuron-core/neuron-ai/src/Agent',
+            'vendor/neuron-core/neuron-ai/src/Chat',
+            'vendor/neuron-core/neuron-ai/src/Observability',
+            'vendor/neuron-core/neuron-ai/src/RAG',
         ];
 
         $userIgnores = [];

@@ -1,4 +1,5 @@
 <?php
+
 /**
  * @desc TypePHP 基础插件配置文件
  * @author Tinywan(ShaoBo Wan)
@@ -11,7 +12,7 @@ return [
     // Docker 编译环境配置
     'docker' => [
         'enabled' => true,
-        'image' => 'tinywan/typephp-webman-builder:alpine',
+        'image' => 'tinywan/typephp-webman-builder:v0.0.10',
     ],
     // 默认输出配置
     'build' => [
@@ -49,5 +50,5 @@ return [
         'vendor/workerman/workerman/src/Events/Swow.php',
         'vendor/workerman/coroutine/src/Pool.php',
         'vendor/workerman/coroutine/src/Utils/DestructionWatcher.php',
-    ]
+    ],
 ];

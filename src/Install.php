@@ -1,4 +1,5 @@
 <?php
+
 /**
  * @desc Webman 插件生命周期安装与卸载器
  * @author Tinywan(ShaoBo Wan)
@@ -13,7 +14,7 @@ class Install
     public const WEBMAN_PLUGIN = true;
 
     /**
-     * @var array
+     * @var array<string, string>
      */
     protected static $pathRelation = [
         'config/plugin/tinywan/typephp' => 'config/plugin/tinywan/typephp',

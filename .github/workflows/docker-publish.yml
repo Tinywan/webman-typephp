@@ -1,34 +1,59 @@
-name: Build and Publish TypePHP Builder Image
+name: Publish TypePHP Webman Builder
 
 on:
   push:
-    paths:
-      - 'docker/**'
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Exact Docker image tag (vMAJOR.MINOR.PATCH, for example v0.0.10)'
+        required: true
+        type: string
+      push:
+        description: 'Push the exact version tag to Docker Hub'
+        required: true
+        default: true
+        type: boolean
 
 jobs:
   docker:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      attestations: write
+      id-token: write
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v4
+      - name: Resolve exact version tag
+        id: version
+        shell: bash
+        run: |
+          version="${{ github.event_name == 'push' && github.ref_name || inputs.version }}"
+          [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]] || { echo "Invalid version tag: $version" >&2; exit 1; }
+          echo "tag=$version" >> "$GITHUB_OUTPUT"
+          echo "push=${{ github.event_name == 'push' || inputs.push }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v4
+        if: steps.version.outputs.push == 'true'
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Build and push
-        uses: docker/build-push-action@v5
+      - uses: docker/metadata-action@v6
+        id: meta
+        with:
+          images: tinywan/typephp-webman-builder
+          tags: |
+            type=ref,event=tag
+            type=raw,value=${{ inputs.version }},enable=${{ github.event_name == 'workflow_dispatch' }}
+      - uses: docker/build-push-action@v7
         with:
           context: ./docker
-          push: true
-          tags: |
-            tinywan/typephp-webman-builder:alpine
-            tinywan/typephp-webman-builder:latest
+          platforms: linux/amd64
+          push: ${{ steps.version.outputs.push }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: mode=max
+          sbom: true

@@ -12,13 +12,23 @@ it('creates a portable build configuration from explicit project inputs', functi
         $generator = new ProjectGenerator($directory);
         $path = $generator->generateProjectYml(['include' => ['app'], 'exclude' => ['runtime']]);
 
-        expect($path)->toBe($directory . DIRECTORY_SEPARATOR . 'project.linux.yml')
-            ->and(file_get_contents($path))->toContain("sources:\n  - main.php\n  - app\n")
-            ->toContain("ignore:\n  - runtime\n")
+        expect($path)
+            ->toBe($directory . DIRECTORY_SEPARATOR . 'project.linux.yml')
+            ->and(file_get_contents($path))
+            ->toContain("sources:\n  - main.php\n  - app\n")
+            ->toContain("\n  - runtime\n")
             ->toContain('output: build/webman-server');
     } finally {
-        @unlink($directory . DIRECTORY_SEPARATOR . 'project.linux.yml');
-        @rmdir($directory . DIRECTORY_SEPARATOR . 'app');
-        @rmdir($directory);
+        $projectFile = $directory . DIRECTORY_SEPARATOR . 'project.linux.yml';
+        if (is_file($projectFile)) {
+            unlink($projectFile);
+        }
+        $appDirectory = $directory . DIRECTORY_SEPARATOR . 'app';
+        if (is_dir($appDirectory)) {
+            rmdir($appDirectory);
+        }
+        if (is_dir($directory)) {
+            rmdir($directory);
+        }
     }
 });

@@ -1,4 +1,5 @@
 <?php
+
 /**
  * @desc TypePHP 编译环境诊断命令
  * @author Tinywan(ShaoBo Wan)
@@ -20,8 +21,7 @@ class DoctorCommand extends Command
 
     protected function configure(): void
     {
-        $this->setName('typephp:doctor')
-            ->setDescription('Check local system environment for TypePHP compilation');
+        $this->setName('typephp:doctor')->setDescription('Check local system environment for TypePHP compilation');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -43,9 +43,13 @@ class DoctorCommand extends Command
         $dockerProcess = new Process(['docker', '--version']);
         $dockerProcess->run();
         if ($dockerProcess->isSuccessful()) {
-            $output->writeln('• Docker: ' . trim($dockerProcess->getOutput()) . ' <info>[OK - Required for Phase 1]</info>');
+            $output->writeln(
+                '• Docker: ' . trim($dockerProcess->getOutput()) . ' <info>[OK - Required for Phase 1]</info>',
+            );
         } else {
-            $output->writeln('• Docker: Not found or not running <error>[FAIL - Docker is required for portable-dir build]</error>');
+            $output->writeln(
+                '• Docker: Not found or not running <error>[FAIL - Docker is required for portable-dir build]</error>',
+            );
             $allPassed = false;
         }
 
@@ -53,7 +57,9 @@ class DoctorCommand extends Command
         $clangProcess = new Process(['clang', '--version']);
         $clangProcess->run();
         if ($clangProcess->isSuccessful()) {
-            $output->writeln('• Host Clang Compiler: Installed <comment>[Optional - Containerized build bypasses host compiler]</comment>');
+            $output->writeln(
+                '• Host Clang Compiler: Installed <comment>[Optional - Containerized build bypasses host compiler]</comment>',
+            );
         } else {
             $output->writeln('• Host Clang Compiler: Not installed <info>[OK - Handled inside Docker builder]</info>');
         }

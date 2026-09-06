@@ -1,6 +1,13 @@
+version = "1"
+php-version = "8.4"
+
+[source]
+paths = ["src", "tests", "pest.php"]
+includes = ["vendor"]
+
 [formatter]
-print_width = 120
-tab_width = 4
+print-width = 120
+tab-width = 4
 
 [linter]
-integrations = ["php"]
+integrations = []

@@ -28,7 +28,9 @@ Webman 项目，在 Linux x86_64 上生成 portable-dir 技术预览产物。第
 
 ```ts
 dist/
-├── webman-server
+├── webman-server.bin
+├── start.sh                 # Sets LD_LIBRARY_PATH and launches the binary
+├── lib/                     # Required libphp/libphpx runtime libraries
 ├── build-manifest.json
 ├── config/                 # 存在时复制
 ├── public/                 # 存在时复制
