@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly workspace=/workspace
+readonly real_workspace=/workspace
 readonly output_dir="${TYPEPHP_OUTPUT_DIR:-dist}"
 readonly output_name="${TYPEPHP_OUTPUT_NAME:-webman-server}"
 readonly force="${TYPEPHP_FORCE:-0}"
-readonly build_dir="$workspace/.typephp/build"
 readonly build_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
-readonly stage_dir="$workspace/.typephp/out-$build_id"
 
 validate_relative_path() {
     local path="$1" segment
@@ -64,6 +62,26 @@ if [[ ! "$output_name" =~ ^[A-Za-z0-9._-]+$ ]]; then
     exit 2
 fi
 
+# The host workspace is a Docker Desktop bind mount served over 9P, whose
+# per-file latency makes the compiler's thousands of small reads/writes
+# extremely slow (the analysis phase alone can stall for many minutes and the
+# single big binary write is cheap by comparison). Copy the project into
+# container-native storage, compile there, and copy only the final portable
+# directory back to the bind mount at the end.
+readonly native_root="/native/$build_id"
+mkdir -p "$native_root"
+( cd "$real_workspace" && tar \
+    --exclude=./.git \
+    --exclude=./runtime \
+    --exclude=./build \
+    --exclude="./$output_dir" \
+    --exclude=./.typephp/out-* \
+    --exclude=./.typephp/previous-* \
+    -cf - . ) | ( cd "$native_root" && tar -xf - )
+readonly workspace="$native_root"
+readonly build_dir="$workspace/.typephp/build"
+readonly stage_dir="$workspace/.typephp/out-$build_id"
+
 cd "$workspace"
 project_file="$workspace/project.linux.yml"
 [[ -f "$project_file" ]] || project_file="$build_dir/project.linux.yml"
@@ -95,7 +113,15 @@ else
     exit 1
 fi
 
-echo '[INFO] Compiling Linux x86_64 glibc binary...'
+# Parallelize the C++ codegen/compile phase across available cores. job:1 makes
+# the ~371-file g++ phase take 40+ minutes (exceeding the command timeout);
+# cap at 8 to bound peak memory since each PHPX-template g++ job can be large.
+jobs="$(nproc 2>/dev/null || echo 2)"
+[[ "$jobs" -gt 8 ]] && jobs=8
+[[ "$jobs" -lt 1 ]] && jobs=1
+sed -i "s/^job:.*/job: ${jobs}/" "$project_file"
+
+echo "[INFO] Compiling Linux x86_64 glibc binary (job=${jobs})..."
 "${tpc[@]}" "$project_file" --no-progress
 
 normalized_output="$(dirname -- "$project_output")/$(basename -- "$project_output" | tr '-' '_')"
@@ -166,14 +192,16 @@ if [[ -d vendor/workerman/coroutine/src ]]; then mkdir -p "$stage_dir/vendor/wor
 if [[ -f vendor/nikic/fast-route/src/functions.php ]]; then copy_file vendor/nikic/fast-route/src/functions.php "$stage_dir/vendor/nikic/fast-route/src/functions.php"; fi
 [[ -f "$build_dir/build-manifest.json" ]] && copy_file "$build_dir/build-manifest.json" "$stage_dir/build-manifest.json"
 
-readonly final_dir="$workspace/$output_dir"
+readonly final_dir="$real_workspace/$output_dir"
 if [[ -e "$final_dir" ]]; then
     if [[ "$force" != 1 ]]; then
         echo "[ERROR] Output '$output_dir' exists; use --force to replace it." >&2
         exit 1
     fi
-    mv "$final_dir" "$workspace/.typephp/previous-$build_id"
+    mv "$final_dir" "$real_workspace/.typephp/previous-$build_id"
 fi
-mv "$stage_dir" "$final_dir"
+# stage_dir is on native storage while final_dir is on the 9P bind mount, so this
+# is a cross-device copy of the finished portable directory back to the host.
+cp -a "$stage_dir" "$final_dir"
 trap - EXIT
 echo "[SUCCESS] Portable directory created: $output_dir (run ./start.sh from it)"

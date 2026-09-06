@@ -93,6 +93,7 @@ class ProjectGenerator
             'app/functions.php',
             'app/process/Monitor.php',
             'support',
+            'vendor/workerman/webman-framework/src/support/view',
             'vendor/workerman/webman-framework/src/support/helpers.php',
             'vendor/workerman/webman-framework/src/support/bootstrap.php',
             'vendor/workerman/webman-framework/src/start.php',
@@ -113,11 +114,10 @@ class ProjectGenerator
             'vendor/workerman/coroutine/src/Context/Swow.php',
             'vendor/workerman/coroutine/src/Coroutine/Swow.php',
             'vendor/workerman/coroutine/src/WaitGroup/Swow.php',
-            'vendor/workerman/workerman/src/Protocols/Http/Session.php',
-            'vendor/workerman/workerman/src/Protocols/Http/Session/FileSessionHandler.php',
             'vendor/workerman/workerman/src/Events/Swow.php',
             'vendor/workerman/coroutine/src/Pool.php',
             'vendor/workerman/coroutine/src/Utils/DestructionWatcher.php',
+            'vendor/monolog/monolog/src/Monolog/Test',
             'vendor/tinywan/webman-mcp/src/config',
             'vendor/tinywan/webman-mcp/src/Install.php',
             'vendor/tinywan/webman-mcp/src/Command',
@@ -156,7 +156,9 @@ class ProjectGenerator
         $yaml .= "\noutput: build/{$outputName}\n";
         $yaml .= "mode: bin\n";
         $yaml .= "optimize: 2\n";
-        $yaml .= "job: 1\n";
+        // The builder entrypoint raises this to the container's core count (nproc,
+        // capped) at compile time; 4 is a safe parallel default for direct tpc runs.
+        $yaml .= "job: 4\n";
         $yaml .= "debug: false\n";
 
         $ymlPath = $this->basePath . DIRECTORY_SEPARATOR . 'project.linux.yml';

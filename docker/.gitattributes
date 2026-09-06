@@ -1,0 +1,6 @@
+# The Docker build context is consumed by a Linux container. entrypoint.sh is
+# the container entrypoint; a CRLF shebang would fail with "bad interpreter".
+# Pin these files to LF regardless of a contributor's core.autocrlf setting.
+entrypoint.sh text eol=lf
+*.php text eol=lf
+Dockerfile text eol=lf
