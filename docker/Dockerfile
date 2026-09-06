@@ -12,6 +12,7 @@ COPY SwitchTrait.php /opt/typephp/vendor/swoole/typephp/src/Parser/SwitchTrait.p
 COPY CompilerBase.php /opt/typephp/vendor/swoole/typephp/src/CompilerBase.php
 COPY ArrayExpressionTrait.php /opt/typephp/vendor/swoole/typephp/src/Parser/ArrayExpressionTrait.php
 COPY FuncCallOptimizer.php /opt/typephp/vendor/swoole/typephp/src/Optimizer/FuncCallOptimizer.php
+COPY AssignOpTrait.php /opt/typephp/vendor/swoole/typephp/src/Parser/AssignOpTrait.php
 RUN chmod 0755 /entrypoint.sh
 
 WORKDIR /workspace

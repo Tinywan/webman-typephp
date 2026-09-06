@@ -12,7 +12,7 @@ return [
     // Docker 编译环境配置
     'docker' => [
         'enabled' => true,
-        'image' => 'tinywan/typephp-webman-builder:v0.0.11',
+        'image' => 'tinywan/typephp-webman-builder:v0.0.13',
     ],
     // 默认输出配置
     'build' => [

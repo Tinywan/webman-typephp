@@ -56,7 +56,7 @@ php webman typephp:package
 php webman typephp:package --force
 ```
 
-默认 builder 为 `tinywan/typephp-webman-builder:v0.0.11`。编译在 Docker 中完成，宿主机不需要 C++、Clang 或 TypePHP 编译器。
+默认 builder 为 `tinywan/typephp-webman-builder:v0.0.13`。编译在 Docker 中完成，宿主机不需要 C++、Clang 或 TypePHP 编译器。
 
 ### 4. 启动产物
 
