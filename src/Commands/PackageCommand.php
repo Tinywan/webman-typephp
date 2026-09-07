@@ -122,32 +122,47 @@ class PackageCommand extends Command
 
         $generator = new ProjectGenerator($basePath);
 
-        // 生成或刷新 main.php
-        $refreshMain = (bool) $input->getOption('refresh-main');
-        $generator->generateMain(null, $refreshMain);
-        if ($refreshMain) {
-            $output->writeln('<comment>[1/3] Refreshed AOT entrypoint: main.php (backup saved to main.php.bak)</comment>');
-        } else {
-            $output->writeln('<comment>[1/3] Verified AOT entrypoint: main.php</comment>');
-        }
-
-        // 动态合并配置并生成 project.linux.yml
-        $extraConfig = [
-            'build' => [
-                'output_name' => $outputName,
-            ],
-        ];
-        if (function_exists('config')) {
-            $pluginConfig = config('plugin.tinywan.typephp.app', []);
-            if (is_array($pluginConfig)) {
-                $extraConfig = array_replace_recursive($pluginConfig, $extraConfig);
+        try {
+            // 生成或刷新 main.php
+            $refreshMain = (bool) $input->getOption('refresh-main');
+            $generator->generateMain(null, $refreshMain);
+            if ($refreshMain) {
+                $output->writeln(
+                    '<comment>[1/3] Refreshed AOT entrypoint: main.php (backup saved to main.php.bak)</comment>',
+                );
+            } else {
+                $output->writeln('<comment>[1/3] Verified AOT entrypoint: main.php</comment>');
             }
+
+            // 动态合并配置并生成 project.linux.yml
+            $extraConfig = [
+                'build' => [
+                    'output_name' => $outputName,
+                ],
+            ];
+            if (function_exists('config')) {
+                $pluginConfig = config('plugin.tinywan.typephp.app', []);
+                if (is_array($pluginConfig)) {
+                    $extraConfig = array_replace_recursive($pluginConfig, $extraConfig);
+                }
+            }
+            $projectYmlPath = $generator->generateProjectYml($extraConfig);
+        } catch (\RuntimeException $exception) {
+            $output->writeln('<error>[ERROR] ' . $exception->getMessage() . '</error>');
+            return Command::FAILURE;
         }
-        $projectYmlPath = $generator->generateProjectYml($extraConfig);
 
         // 确保 project.linux.yml 保存在项目根目录，供 tpc 以项目根目录为基准直接解析
         copy($projectYmlPath, $stageBuildDir . DIRECTORY_SEPARATOR . 'project.linux.yml');
         $output->writeln('<comment>[2/3] Generated compiler config: project.linux.yml</comment>');
+
+        // 汇总各类 AOT 生成源（平铺守卫源、静态属性补丁源、可变参数闭包补丁源）
+        $flattenedHashes = $this->collectGeneratedHashes($basePath, ProjectGenerator::GUARDED_SOURCES);
+        $patchedHashes = $this->collectGeneratedHashes($basePath, ProjectGenerator::NULLABLE_STATIC_SOURCES);
+        $variadicHashes = $this->collectGeneratedHashes($basePath, ProjectGenerator::VARIADIC_HANDLER_SOURCES);
+        $this->reportGeneratedSources($output, 'flattened', $flattenedHashes);
+        $this->reportGeneratedSources($output, 'nullable-static', $patchedHashes);
+        $this->reportGeneratedSources($output, 'variadic-handler', $variadicHashes);
 
         // 生成 build-manifest.json 记录元数据
         $manifest = [
@@ -160,6 +175,9 @@ class PackageCommand extends Command
             'inputs' => [
                 'main_hash' => file_exists($basePath . '/main.php') ? sha1_file($basePath . '/main.php') : '',
                 'config_hash' => sha1_file($projectYmlPath),
+                'flattened_hashes' => $flattenedHashes,
+                'nullable_static_hashes' => $patchedHashes,
+                'variadic_handler_hashes' => $variadicHashes,
             ],
         ];
         file_put_contents($stageBuildDir . DIRECTORY_SEPARATOR . 'build-manifest.json', json_encode(
@@ -202,5 +220,37 @@ class PackageCommand extends Command
 
         $output->writeln('<error>[ERROR] TypePHP build failed with exit code ' . $process->getExitCode() . '</error>');
         return Command::FAILURE;
+    }
+
+    /**
+     * @param array<string, string> $targets 生成目标相对路径 => 哈希
+     * @return array<string, string>
+     */
+    private function collectGeneratedHashes(string $basePath, array $targets): array
+    {
+        $hashes = [];
+        foreach ($targets as $target) {
+            $file = $basePath . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $target);
+            if (is_file($file)) {
+                $hashes[$target] = (string) sha1_file($file);
+            }
+        }
+        return $hashes;
+    }
+
+    /**
+     * @param array<string, string> $hashes
+     */
+    private function reportGeneratedSources(OutputInterface $output, string $label, array $hashes): void
+    {
+        if ($hashes !== []) {
+            $output->writeln(
+                '<comment>[2/3] Generated '
+                . $label
+                . ' AOT sources: '
+                . implode(', ', array_keys($hashes))
+                . '</comment>',
+            );
+        }
     }
 }

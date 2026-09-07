@@ -23,6 +23,9 @@
 ## 🌟 核心特性
 
 - ⚡ **一键构建**：自动生成 `main.php` 与 `project.linux.yml`，统一调度 Docker 编译环境。
+- 🧩 **全版本 Webman 兼容**：自动把 `webman-framework` 的 `helpers.php` 与 `fast-route` 的 `functions.php` 平铺为 AOT 专用版本（`.typephp/build/`），规避新版框架顶层 `if` 守卫触发的 `Unsupported statement: Stmt_If` 编译错误或静默跳过，同时保证 `base_path()`、`config()`、`FastRoute\simpleDispatcher()` 等全局函数完整编译进二进制。
+- 🩹 **协程静态属性补丁**：自动把 `workerman/coroutine` 的 `Context`/`WaitGroup`/`Barrier` 中未初始化的标量静态属性补成可空并默认 `null`（`.typephp/build/`），规避 TypePHP 编译产物把未初始化标量静态读作零值导致 `??=` 守卫失效、进而触发 `Invalid callback ::destroy` 崩溃循环的问题。
+- 🔧 **可变参数闭包补丁**：自动把 `Worker`/`TcpConnection`/`AsyncTcpConnection`/`Select`/webman `File` 中签名不足的错误处理与信号闭包补成可变参数形态（`.typephp/build/`），规避 TypePHP 编译产物对闭包调用强制精确参数个数（PHP 语义允许多传忽略）导致每次 accept 抛 `ArgumentCountError`、worker 崩溃循环的问题。
 - 📦 **目录化交付**：输出原生二进制、启动脚本、运行库和 Webman 资源，结构清晰、便于发布。
 - 🛡️ **安全默认值**：已有输出不会被静默覆盖；必须显式使用 `--force`，旧目录会先备份。
 - 🧾 **可追溯构建**：`build-manifest.json` 记录输入摘要、镜像和构建时间，不写入密钥或令牌。
