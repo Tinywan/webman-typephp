@@ -179,20 +179,21 @@ for bin_or_lib in "$stage_dir/webman-server.bin" "$stage_dir/lib"/*.so* "$stage_
     fi
 done
 
-# 确保核心运行时动态库存在
+# 确保核心运行时动态库存在，并复制到根目录和 lib/ 目录
 for required_library in 'libphpx.so*' 'libphp.so*'; do
-    if ! find "$stage_dir/lib" -maxdepth 1 -type f -name "$required_library" | grep -q .; then
-        # 尝试从系统目录补充
-        find /usr -name "$required_library" -type f 2>/dev/null | while read -r sys_lib; do
-            cp -L "$sys_lib" "$stage_dir/lib/" || true
-        done
+    found_lib="$(find "$stage_dir/lib" /usr -name "$required_library" -type f 2>/dev/null | head -n 1 || true)"
+    if [[ -n "$found_lib" && -f "$found_lib" ]]; then
+        libname="$(basename "$found_lib")"
+        clean_libname="${libname%%.*}.so"
+        cp -L "$found_lib" "$stage_dir/$clean_libname" || true
+        cp -L "$found_lib" "$stage_dir/lib/$libname" || true
     fi
 done
 
 # 3. 修复可执行程序和扩展的 RPATH（如果有 patchelf）
 if command -v patchelf &> /dev/null; then
     patchelf --set-rpath '$ORIGIN:$ORIGIN/lib' "$stage_dir/webman-server.bin" 2>/dev/null || true
-    for solib in "$stage_dir"/lib/*.so*; do
+    for solib in "$stage_dir"/*.so "$stage_dir"/lib/*.so*; do
         [[ -f "$solib" ]] && patchelf --set-rpath '$ORIGIN:$ORIGIN/lib' "$solib" 2>/dev/null || true
     done
     for extsolib in "$stage_dir"/ext/*.so; do
@@ -237,21 +238,43 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     fi
 done < "$stage_dir/php.ini"
 
-# 5. 生成标准可移植启动脚本 start.sh
-install -m 0755 /dev/stdin "$stage_dir/start.sh" <<'SCRIPT'
-#!/usr/bin/env bash
-set -euo pipefail
-readonly app_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$app_dir"
-export PHPRC="$app_dir"
-export LD_LIBRARY_PATH="$app_dir:$app_dir/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-exec "$app_dir/webman-server.bin" "$@"
+# 5. 生成标准可移植启动包装脚本 webman-server 与 start.sh
+install -m 0755 /dev/stdin "$stage_dir/webman-server" <<'SCRIPT'
+#!/usr/bin/env sh
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+cd "$SCRIPT_DIR"
+
+export PHPRC="$SCRIPT_DIR"
+export LD_LIBRARY_PATH="$SCRIPT_DIR:$SCRIPT_DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+exec "$SCRIPT_DIR/webman-server.bin" "$@"
 SCRIPT
 
-# 6. 复制运行时业务资源
+install -m 0755 /dev/stdin "$stage_dir/start.sh" <<'SCRIPT'
+#!/usr/bin/env bash
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+export PHPRC="$SCRIPT_DIR"
+export LD_LIBRARY_PATH="$SCRIPT_DIR:$SCRIPT_DIR/lib:$LD_LIBRARY_PATH"
+
+if [ ! -f "$SCRIPT_DIR/webman-server" ]; then
+    echo "[ERROR] webman-server executable not found in $SCRIPT_DIR!"
+    exit 1
+fi
+
+chmod +x "$SCRIPT_DIR/webman-server" 2>/dev/null || true
+exec "$SCRIPT_DIR/webman-server" "$@"
+SCRIPT
+
+# 6. 复制运行时业务资源并确保 runtime 目录
 for resource in config public; do
     [[ -d "$resource" ]] && cp -a "$resource" "$stage_dir/"
 done
+mkdir -p "$stage_dir/runtime/logs" "$stage_dir/runtime/views"
 if [[ -d app/view ]]; then mkdir -p "$stage_dir/app"; cp -a app/view "$stage_dir/app/"; fi
 if [[ -f app/functions.php ]]; then copy_file app/functions.php "$stage_dir/app/functions.php"; fi
 [[ -f "$build_dir/build-manifest.json" ]] && copy_file "$build_dir/build-manifest.json" "$stage_dir/build-manifest.json"
