@@ -55,7 +55,10 @@ class ProjectGenerator
      * ArgumentCountError，worker 崩溃循环。同样，优雅停机/重载路径上
      * array_walk 以 2 参(value,key) 调用 1 参闭包、master 进程 pcntl_signal
      * 以 2 参(signo,siginfo) 调用 signalHandler，也会在 Ctrl+C/stop 时崩溃。
-     * 补丁把这些闭包改为可变参数形态。
+     * 补丁把这些闭包改为可变参数形态。另对 resetStd() 的标准流关闭段做整段删除
+     * （见 RESET_STD_STREAM_CLOSE_BLOCK）：TypePHP 标准流为 NO_CLOSE、禁止手动关闭，
+     * start -d 守护进程化必经的 fclose(STDOUT/STDERR/outputStream) 会抛 TypeError
+     * 令 master/worker 在 "Start success" 后即刻崩溃。
      */
     public const VARIADIC_HANDLER_SOURCES = [
         'vendor/workerman/workerman/src/Worker.php' => '.typephp/build/workerman-worker.php',
@@ -64,6 +67,33 @@ class ProjectGenerator
         'vendor/workerman/workerman/src/Events/Select.php' => '.typephp/build/workerman-select.php',
         'vendor/workerman/webman-framework/src/File.php' => '.typephp/build/webman-file.php',
     ];
+
+    /**
+     * resetStd() 的标准流关闭段（STDOUT / STDERR / outputStream），按真实 vendor 逐字节匹配后整段删除。
+     *
+     * TypePHP 嵌入式运行时（libphp 链入原生二进制）把标准流标为 NO_CLOSE、禁止手动关闭：
+     * is_resource(STDOUT) 为真但 fclose(STDOUT) 抛 "supplied resource is not a valid
+     * stream resource" TypeError。start -d 守护进程化必经 resetStd()（master 与每个 fork 出的
+     * worker 各执行一次），任一处 fclose 都会让进程在 "Start success" 后即刻崩溃。
+     * 三处关闭并非日志重定向所需——紧随其后的 fopen(static::$stdoutFile, 'a') 已把
+     * static::$outputStream 重指向目标文件（默认 /dev/null），safeEcho()/log() 均经
+     * outputStream 输出，删除后日志去向与 stock 完全一致。该补丁源仅参与 AOT 编译
+     * （vendor 原件已在 ignore 中排除），无需兼容普通 PHP 中"关闭 fd1/fd2 使 fopen 复用"的语义。
+     */
+    protected const RESET_STD_STREAM_CLOSE_BLOCK =
+        "\n"
+        . '        if (is_resource(STDOUT)) {' . "\n"
+        . '            fclose(STDOUT);' . "\n"
+        . '        }' . "\n"
+        . "\n"
+        . '        if (is_resource(STDERR)) {' . "\n"
+        . '            fclose(STDERR);' . "\n"
+        . '        }' . "\n"
+        . "\n"
+        . '        if (is_resource(static::$outputStream)) {' . "\n"
+        . '            fclose(static::$outputStream);' . "\n"
+        . '        }' . "\n"
+        . "\n";
 
     /**
      * 可变参数闭包补丁的字面替换规则：源文件 => [搜索串 => 替换串]。
@@ -78,6 +108,10 @@ class ProjectGenerator
             'array_walk($workers, static fn (Worker $worker) => $worker->stop(false));' => 'array_walk($workers, static fn (Worker $worker, ...$__walk) => $worker->stop(false));',
             'array_walk($workerPidArray, static fn ($pid) => posix_kill($pid, $sig));' => 'array_walk($workerPidArray, static fn ($pid, ...$__walk) => posix_kill($pid, $sig));',
             'pcntl_signal($signal, static::signalHandler(...), false);' => 'pcntl_signal($signal, static fn (...$__sig) => static::signalHandler($__sig[0]), false);',
+            // daemon 模式 resetStd()：TypePHP 嵌入式运行时把标准流标记 NO_CLOSE、禁止手动关闭，三处
+            // fclose 必抛 TypeError 令守护进程崩溃。日志重定向不依赖关闭它们——其下 fopen(stdoutFile)
+            // 已把 outputStream 重指向目标文件，故整段删除关闭段（保留一个空行）。
+            self::RESET_STD_STREAM_CLOSE_BLOCK => "\n",
         ],
         'vendor/workerman/workerman/src/Connection/TcpConnection.php' => [
             'set_error_handler(static function (int $code, string $msg): bool {' => 'set_error_handler(static function (int $code, string $msg, ...$__err): bool {',

@@ -480,6 +480,23 @@ it('patches under-declared handler closures into variadic AOT sources', function
                 $signal = 2;
                 pcntl_signal($signal, static::signalHandler(...), false);
             }
+            public static function resetStd(): void
+            {
+                // 整块删除规则按字节匹配；下面关闭段的缩进与空行必须与真实 vendor Worker.php 一致，勿改
+                if (is_resource(STDOUT)) {
+                    fclose(STDOUT);
+                }
+
+                if (is_resource(STDERR)) {
+                    fclose(STDERR);
+                }
+
+                if (is_resource(static::$outputStream)) {
+                    fclose(static::$outputStream);
+                }
+
+                $stdOutStream = fopen(static::$stdoutFile, 'a');
+            }
         }
         PHP;
     file_put_contents($workermanSrc . '/Worker.php', $worker);
@@ -545,6 +562,16 @@ it('patches under-declared handler closures into variadic AOT sources', function
             ->toContain('pcntl_signal($signal, static fn (...$__sig) => static::signalHandler($__sig[0]), false);');
         expect(str_contains($workerPatched, 'array_walk($workers, static fn (Worker $worker) => $worker->stop(false));'))->toBeFalse();
         expect(str_contains($workerPatched, 'pcntl_signal($signal, static::signalHandler(...), false);'))->toBeFalse();
+
+        // daemon 模式 resetStd()：TypePHP 标准流 NO_CLOSE 禁止关闭，三处 fclose 段被整块删除；
+        // 日志重定向（fopen stdoutFile → outputStream）保留，与 stock 行为一致
+        expect(str_contains($workerPatched, 'is_resource(STDOUT)'))->toBeFalse();
+        expect(str_contains($workerPatched, 'fclose(STDOUT);'))->toBeFalse();
+        expect(str_contains($workerPatched, 'is_resource(STDERR)'))->toBeFalse();
+        expect(str_contains($workerPatched, 'fclose(STDERR);'))->toBeFalse();
+        expect(str_contains($workerPatched, 'is_resource(static::$outputStream)'))->toBeFalse();
+        expect(str_contains($workerPatched, 'fclose(static::$outputStream);'))->toBeFalse();
+        expect($workerPatched)->toContain('$stdOutStream = fopen(static::$stdoutFile, \'a\');');
 
         $selectPatched = (string) file_get_contents($directory . '/.typephp/build/workerman-select.php');
         expect($selectPatched)->toContain('pcntl_signal($signal, fn (...$__sig) => $this->safeCall(');
