@@ -20,27 +20,26 @@ class ProjectGenerator
     }
 
     /**
-     * 生成 main.php AOT 入口
+     * 生成或刷新 main.php AOT 入口
      */
-    public function generateMain(?string $targetFile = null): string
+    public function generateMain(?string $targetFile = null, bool $force = false): string
     {
         $targetFile = $targetFile ?: $this->basePath . DIRECTORY_SEPARATOR . 'main.php';
         $stubPath = dirname(__DIR__) . '/Stubs/main.php.stub';
+        $content = file_get_contents($stubPath);
+        if ($content === false) {
+            throw new \RuntimeException('Unable to read the TypePHP main.php stub.');
+        }
+        // 彻底去除任何可能的 UTF-8 BOM 头 (EF BB BF)
+        $content = (string) preg_replace('/^\xEF\xBB\xBF/', '', $content);
+
         if (!file_exists($targetFile)) {
-            $content = file_get_contents($stubPath);
-            if ($content === false) {
-                throw new \RuntimeException('Unable to read the TypePHP main.php stub.');
-            }
-            // 彻底去除任何可能的 UTF-8 BOM 头 (EF BB BF)
-            $content = preg_replace('/^\xEF\xBB\xBF/', '', $content);
             file_put_contents($targetFile, $content);
-        } elseif (str_contains((string) file_get_contents($targetFile), '$helpersFile = BASE_PATH')) {
-            // 旧版 main.php 中包含对 helpers.php 的动态 require，自动迁移到最新 AOT 入口
-            $content = file_get_contents($stubPath);
-            if ($content !== false) {
-                $content = preg_replace('/^\xEF\xBB\xBF/', '', $content);
-                file_put_contents($targetFile, $content);
-            }
+        } elseif ($force || str_contains((string) file_get_contents($targetFile), '$helpersFile = BASE_PATH')) {
+            // 当明确指定 force 或检测到旧版废弃动态加载逻辑时，先备份再更新
+            $backupFile = $targetFile . '.bak';
+            copy($targetFile, $backupFile);
+            file_put_contents($targetFile, $content);
         }
         return $targetFile;
     }

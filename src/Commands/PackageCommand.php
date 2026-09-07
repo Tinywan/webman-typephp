@@ -47,6 +47,12 @@ class PackageCommand extends Command
                 'f',
                 InputOption::VALUE_NONE,
                 'Overwrite existing output directory if it already exists',
+            )
+            ->addOption(
+                'refresh-main',
+                null,
+                InputOption::VALUE_NONE,
+                'Force refresh main.php from the latest TypePHP stub (backups existing to main.php.bak)',
             );
     }
 
@@ -116,9 +122,14 @@ class PackageCommand extends Command
 
         $generator = new ProjectGenerator($basePath);
 
-        // 生成 main.php
-        $generator->generateMain();
-        $output->writeln('<comment>[1/3] Generated AOT entrypoint: main.php</comment>');
+        // 生成或刷新 main.php
+        $refreshMain = (bool) $input->getOption('refresh-main');
+        $generator->generateMain(null, $refreshMain);
+        if ($refreshMain) {
+            $output->writeln('<comment>[1/3] Refreshed AOT entrypoint: main.php (backup saved to main.php.bak)</comment>');
+        } else {
+            $output->writeln('<comment>[1/3] Verified AOT entrypoint: main.php</comment>');
+        }
 
         // 动态合并配置并生成 project.linux.yml
         $extraConfig = [

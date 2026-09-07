@@ -9,6 +9,7 @@ it('rejects illegal output names or invalid paths', function (): void {
     expect($command->getDefinition()->hasOption('image'))->toBeTrue();
     expect($command->getDefinition()->hasOption('output-dir'))->toBeTrue();
     expect($command->getDefinition()->hasOption('output-name'))->toBeTrue();
+    expect($command->getDefinition()->hasOption('refresh-main'))->toBeTrue();
 });
 
 it('defaults to the versioned portable-dir builder image', function (): void {
