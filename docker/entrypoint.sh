@@ -181,12 +181,15 @@ done
 
 # 确保核心运行时动态库存在，并复制到根目录和 lib/ 目录
 for required_library in 'libphpx.so*' 'libphp.so*'; do
-    found_lib="$(find "$stage_dir/lib" /usr -name "$required_library" -type f 2>/dev/null | head -n 1 || true)"
+    found_lib="$(find /opt /usr "$stage_dir/lib" -name "$required_library" -type f 2>/dev/null | head -n 1 || true)"
     if [[ -n "$found_lib" && -f "$found_lib" ]]; then
         libname="$(basename "$found_lib")"
         clean_libname="${libname%%.*}.so"
         cp -L "$found_lib" "$stage_dir/$clean_libname" || true
         cp -L "$found_lib" "$stage_dir/lib/$libname" || true
+    else
+        echo "[ERROR] Required library $required_library not found in /opt or /usr!" >&2
+        exit 1
     fi
 done
 
