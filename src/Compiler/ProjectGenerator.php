@@ -52,7 +52,10 @@ class ProjectGenerator
      * pcntl_signal 固定以 1 个参数调用处理器，Workerman 大量使用零参/两参闭包
      * 抑制警告（如 acceptTcpConnection 中的 `static fn (): bool => true`），
      * 编译后每次 accept 都会抛 `expects exactly 0 arguments, 4 given`
-     * ArgumentCountError，worker 崩溃循环。补丁把这些闭包改为可变参数形态。
+     * ArgumentCountError，worker 崩溃循环。同样，优雅停机/重载路径上
+     * array_walk 以 2 参(value,key) 调用 1 参闭包、master 进程 pcntl_signal
+     * 以 2 参(signo,siginfo) 调用 signalHandler，也会在 Ctrl+C/stop 时崩溃。
+     * 补丁把这些闭包改为可变参数形态。
      */
     public const VARIADIC_HANDLER_SOURCES = [
         'vendor/workerman/workerman/src/Worker.php' => '.typephp/build/workerman-worker.php',
@@ -70,6 +73,11 @@ class ProjectGenerator
         'vendor/workerman/workerman/src/Worker.php' => [
             'set_error_handler(static fn (): bool => true);' => 'set_error_handler(static fn (...$__err): bool => true);',
             'set_error_handler(function ($code, $msg) {' => 'set_error_handler(function ($code, $msg, ...$__err) {',
+            // 优雅停机/信号路径：array_walk 实传 2 参(value,key)、pcntl_signal 实传 2 参(signo,siginfo)，
+            // 补丁成可变参数避免停机/重载时抛 ArgumentCountError。
+            'array_walk($workers, static fn (Worker $worker) => $worker->stop(false));' => 'array_walk($workers, static fn (Worker $worker, ...$__walk) => $worker->stop(false));',
+            'array_walk($workerPidArray, static fn ($pid) => posix_kill($pid, $sig));' => 'array_walk($workerPidArray, static fn ($pid, ...$__walk) => posix_kill($pid, $sig));',
+            'pcntl_signal($signal, static::signalHandler(...), false);' => 'pcntl_signal($signal, static fn (...$__sig) => static::signalHandler($__sig[0]), false);',
         ],
         'vendor/workerman/workerman/src/Connection/TcpConnection.php' => [
             'set_error_handler(static function (int $code, string $msg): bool {' => 'set_error_handler(static function (int $code, string $msg, ...$__err): bool {',

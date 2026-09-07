@@ -468,6 +468,18 @@ it('patches under-declared handler closures into variadic AOT sources', function
                 });
                 restore_error_handler();
             }
+            public static function stopAll(): void
+            {
+                $workers = [];
+                array_walk($workers, static fn (Worker $worker) => $worker->stop(false));
+                $workerPidArray = [];
+                array_walk($workerPidArray, static fn ($pid) => posix_kill($pid, $sig));
+            }
+            protected static function installSignal(): void
+            {
+                $signal = 2;
+                pcntl_signal($signal, static::signalHandler(...), false);
+            }
         }
         PHP;
     file_put_contents($workermanSrc . '/Worker.php', $worker);
@@ -525,6 +537,14 @@ it('patches under-declared handler closures into variadic AOT sources', function
             ->toContain('set_error_handler(static fn (...$__err): bool => true);')
             ->toContain('set_error_handler(function ($code, $msg, ...$__err) {');
         expect(str_contains($workerPatched, 'static fn (): bool => true'))->toBeFalse();
+
+        // 停机/重载路径：array_walk 2 参(value,key)、master pcntl_signal 2 参(signo,siginfo) 均补成可变参数形态
+        expect($workerPatched)
+            ->toContain('array_walk($workers, static fn (Worker $worker, ...$__walk) => $worker->stop(false));')
+            ->toContain('array_walk($workerPidArray, static fn ($pid, ...$__walk) => posix_kill($pid, $sig));')
+            ->toContain('pcntl_signal($signal, static fn (...$__sig) => static::signalHandler($__sig[0]), false);');
+        expect(str_contains($workerPatched, 'array_walk($workers, static fn (Worker $worker) => $worker->stop(false));'))->toBeFalse();
+        expect(str_contains($workerPatched, 'pcntl_signal($signal, static::signalHandler(...), false);'))->toBeFalse();
 
         $selectPatched = (string) file_get_contents($directory . '/.typephp/build/workerman-select.php');
         expect($selectPatched)->toContain('pcntl_signal($signal, fn (...$__sig) => $this->safeCall(');
