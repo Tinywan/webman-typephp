@@ -32,7 +32,7 @@ class PackageCommand extends Command
                 null,
                 InputOption::VALUE_REQUIRED,
                 'Docker builder image reference',
-                'tinywan/typephp-webman-builder:v0.0.18',
+                'tinywan/typephp-webman-builder:v0.0.19',
             )
             ->addOption(
                 'output-dir',
