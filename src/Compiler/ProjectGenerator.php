@@ -34,6 +34,13 @@ class ProjectGenerator
             // 彻底去除任何可能的 UTF-8 BOM 头 (EF BB BF)
             $content = preg_replace('/^\xEF\xBB\xBF/', '', $content);
             file_put_contents($targetFile, $content);
+        } elseif (str_contains((string) file_get_contents($targetFile), '$helpersFile = BASE_PATH')) {
+            // 旧版 main.php 中包含对 helpers.php 的动态 require，自动迁移到最新 AOT 入口
+            $content = file_get_contents($stubPath);
+            if ($content !== false) {
+                $content = preg_replace('/^\xEF\xBB\xBF/', '', $content);
+                file_put_contents($targetFile, $content);
+            }
         }
         return $targetFile;
     }
@@ -125,12 +132,10 @@ class ProjectGenerator
             'app/process/Monitor.php',
             'support',
             'vendor/workerman/webman-framework/src/support/view',
-            'vendor/workerman/webman-framework/src/support/helpers.php',
             'vendor/workerman/webman-framework/src/support/bootstrap.php',
             'vendor/workerman/webman-framework/src/start.php',
             'vendor/workerman/webman-framework/src/windows.php',
             'vendor/workerman/webman-framework/src/Install.php',
-            'vendor/nikic/fast-route/src/functions.php',
             'vendor/nikic/fast-route/src/bootstrap.php',
             'vendor/nikic/fast-route/src/DataGenerator/CharCountBased.php',
             'vendor/nikic/fast-route/src/DataGenerator/GroupPosBased.php',
