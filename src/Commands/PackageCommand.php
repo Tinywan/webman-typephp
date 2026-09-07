@@ -215,6 +215,20 @@ class PackageCommand extends Command
         if ($process->isSuccessful()) {
             $output->writeln("<info>🎉 Successfully built portable-dir: {$outputDir}/{$outputName}</info>");
             $output->writeln("<info>Run command: cd $outputDir && ./start.sh start</info>");
+
+            // 净化 dist/config：把 `Phar::CONST` 类常量替换为等值整数，避免宿主运行时
+            // 缺少 phar 扩展时，webman 运行期 include 配置抛 Class "Phar" not found。
+            $sanitizedConfigDir = $basePath . DIRECTORY_SEPARATOR . $outputDir . DIRECTORY_SEPARATOR . 'config';
+            if (is_dir($sanitizedConfigDir)) {
+                $sanitized = (new \Tinywan\Typephp\Compiler\DistConfigSanitizer())->sanitizeDirectory($sanitizedConfigDir);
+                if ($sanitized !== []) {
+                    $output->writeln(
+                        '<comment>[post] Neutralized phar class constants in ' . count($sanitized) . ' config file(s): '
+                        . implode(', ', $sanitized) . '</comment>',
+                    );
+                }
+            }
+
             return Command::SUCCESS;
         }
 
