@@ -54,9 +54,12 @@ php webman typephp:package
 
 # dist/ 已存在时，显式确认覆盖
 php webman typephp:package --force
+
+# 强制使用最新 TypePHP stub 重置 main.php 入口（原有 main.php 会自动备份为 main.php.bak）
+php webman typephp:package --refresh-main
 ```
 
-默认 builder 为 `tinywan/typephp-webman-builder:v0.0.13`。编译在 Docker 中完成，宿主机不需要 C++、Clang 或 TypePHP 编译器。
+默认 builder 为 `tinywan/typephp-webman-builder:v0.0.16`。编译在 Docker 中完成，宿主机不需要 C++、Clang 或 TypePHP 编译器。
 
 ### 4. 启动产物
 
@@ -67,7 +70,7 @@ cd dist
 ./start.sh start
 ```
 
-`start.sh` 会自动把随包发布的 `lib/` 加入动态库搜索路径，并将参数传给 `webman-server.bin`。也支持 Webman 常用命令：
+`start.sh` 会自动指定 `PHPRC` 加载随包的 `php.ini`，并将随包发布的 `lib/` 加入动态库搜索路径。也支持 Webman 常用命令：
 
 ```bash
 ./start.sh start -d
@@ -76,22 +79,33 @@ cd dist
 ./start.sh restart
 ```
 
+也可以直接通过包装脚本启动：
+```bash
+./webman-server start
+```
+
 ## 📦 产物契约
 
-成功构建后的核心目录如下：
+成功构建后的完整目录结构如下（与全静态便携环境 100% 对齐）：
 
 ```text
 dist/
 ├── webman-server.bin       # TypePHP 生成的 ELF 原生二进制
-├── start.sh                # 设置 lib/ 路径并启动二进制
-├── lib/                    # 随包发布的非平台动态依赖
+├── webman-server           # 启动包装脚本（自动载入 php.ini 与底层动态库）
+├── start.sh                # 标准 Workerman 启动脚本
+├── libphp.so               # PHP 核心运行时共享库
+├── libphpx.so              # PHPX 运行时共享库
+├── php.ini                 # 自包含纯净 PHP 运行时配置
+├── ext/                    # 随包分发的 PHP 核心与网络扩展模块 (.so)
+├── lib/                    # 随包发布的底层系统与扩展动态依赖库 (ldd 完整收集)
+├── runtime/                # 运行时缓存与日志目录 (logs, views)
 ├── build-manifest.json     # 输入、镜像与时间等构建元数据
 ├── config/                 # 项目运行时配置（若存在）
 ├── public/                 # 静态资源（若存在）
 └── app/view/               # 视图模板（若存在）
 ```
 
-`lib/` 只携带构建所需的非平台动态库；glibc、动态加载器以及标准 C/C++ 运行库由目标系统提供。`build-manifest.json` 用于追踪构建，不应写入密钥、令牌或其他敏感信息。
+`lib/` 携带构建及扩展所需的所有动态依赖库；glibc、动态加载器由目标系统提供。`build-manifest.json` 用于追踪构建，不应写入密钥、令牌或其他敏感信息。
 
 ## 🛠️ 命令
 
@@ -99,6 +113,7 @@ dist/
 | --- | --- |
 | `php webman typephp:package` | 使用默认 builder 构建 Linux portable-dir |
 | `php webman typephp:package --force` | 覆盖已有输出，并保留旧目录备份 |
+| `php webman typephp:package --refresh-main` | 强制从最新官方 stub 刷新 `main.php`（旧文件自动备份） |
 | `php webman typephp:package --image=...` | 使用指定且经过验证的 Docker 镜像 |
 | `php webman typephp:doctor` | 检查 PHP、Docker 和构建前置条件 |
 | `php webman typephp:init-ci` | 生成 Linux amd64 GitHub Actions 工作流 |
@@ -112,7 +127,7 @@ return [
     'enable' => true,
     'docker' => [
         'enabled' => true,
-        'image' => 'tinywan/typephp-webman-builder:v0.0.10',
+        'image' => 'tinywan/typephp-webman-builder:v0.0.16',
     ],
     'build' => [
         'output_name' => 'webman-server',
