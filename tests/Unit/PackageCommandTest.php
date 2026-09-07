@@ -15,5 +15,5 @@ it('rejects illegal output names or invalid paths', function (): void {
 it('defaults to the versioned portable-dir builder image', function (): void {
     $command = new \Tinywan\Typephp\Commands\PackageCommand();
 
-    expect($command->getDefinition()->getOption('image')->getDefault())->toBe('tinywan/typephp-webman-builder:v0.0.16');
+    expect($command->getDefinition()->getOption('image')->getDefault())->toBe('tinywan/typephp-webman-builder:v0.0.17');
 });
