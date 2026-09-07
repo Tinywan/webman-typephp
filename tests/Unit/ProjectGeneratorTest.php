@@ -18,6 +18,11 @@ it('creates a portable build configuration from explicit project inputs', functi
             ->toContain("sources:\n  - main.php\n  - app\n")
             ->toContain("\n  - runtime\n")
             ->toContain('output: build/webman-server');
+
+        // 测试默认源中包含 fast-route functions.php
+        $defaultPath = $generator->generateProjectYml([]);
+        expect(file_get_contents($defaultPath))
+            ->toContain('vendor/nikic/fast-route/src/functions.php');
     } finally {
         $projectFile = $directory . DIRECTORY_SEPARATOR . 'project.linux.yml';
         if (is_file($projectFile)) {

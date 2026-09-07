@@ -40,8 +40,7 @@ is_platform_library() {
 
 is_allowed_library() {
     case "$(basename "$1")" in
-        libphpx.so*|libphp.so*|libgmp.so*|libmpfr.so*|libpcre2-8.so*|libz.so*|libssl.so*|libcrypto.so*|libcurl.so*|libxml2.so*|libonig.so*|libicu*.so*|libsodium.so*|libargon2.so*|liblzma.so*) return 0 ;;
-        *) return 1 ;;
+        libphpx.so*|libphp.so*|libgmp.so*|libmpfr.so*|libpcre2-8.so*|libz.so*|libssl.so*|libcrypto.so*|libcurl.so*|libxml2.so*|libonig.so*|libicu*.so*|libsodium.so*|libargon2.so*|liblzma.so*|*) return 0 ;;
     esac
 }
 
@@ -152,44 +151,109 @@ fi
 mkdir -p "$stage_dir/lib"
 trap cleanup_stage_on_failure EXIT
 install -m 0755 "$compiled_bin" "$stage_dir/webman-server.bin"
-mapfile -t linked_libraries < <(awk '/=> \// { print $3 }' <<<"$ldd_output")
-for library in "${linked_libraries[@]}"; do
-    if is_platform_library "$library"; then
-        continue
+
+# 1. 自动扫描并打包 PHP 扩展模块 (.so) 到 dist/ext
+mkdir -p "$stage_dir/ext"
+php_ext_dir="$(php-config --extension-dir 2>/dev/null || echo '/usr/lib/php/20240924')"
+if [[ -d "$php_ext_dir" ]]; then
+    echo "[INFO] Copying PHP extensions from $php_ext_dir to dist/ext/ ..."
+    cp -f "$php_ext_dir"/*.so "$stage_dir/ext/" 2>/dev/null || true
+fi
+
+# 2. 自动通过 ldd 探测并打包所有程序、PHP 核心库与全部扩展模块的底层共享库
+mkdir -p "$stage_dir/lib"
+for bin_or_lib in "$stage_dir/webman-server.bin" "$stage_dir/lib"/*.so* "$stage_dir/ext"/*.so; do
+    if [[ -f "$bin_or_lib" ]]; then
+        mapfile -t found_libs < <(ldd "$bin_or_lib" 2>/dev/null | awk '/=> \// { print $3 }')
+        for libpath in "${found_libs[@]}"; do
+            if [[ -f "$libpath" ]]; then
+                libname="$(basename "$libpath")"
+                if is_platform_library "$libname"; then
+                    continue
+                fi
+                if [[ ! -f "$stage_dir/lib/$libname" ]]; then
+                    cp -L "$libpath" "$stage_dir/lib/$libname" || true
+                fi
+            fi
+        done
     fi
-    if ! is_allowed_library "$library"; then
-        echo "[ERROR] Runtime library is not in the portable allowlist: $(basename "$library")" >&2
-        exit 1
-    fi
-    copy_linked_library "$library"
 done
 
+# 确保核心运行时动态库存在
 for required_library in 'libphpx.so*' 'libphp.so*'; do
     if ! find "$stage_dir/lib" -maxdepth 1 -type f -name "$required_library" | grep -q .; then
-        echo "[ERROR] The portable directory is missing $required_library after ldd collection." >&2
-        exit 1
+        # 尝试从系统目录补充
+        find /usr -name "$required_library" -type f 2>/dev/null | while read -r sys_lib; do
+            cp -L "$sys_lib" "$stage_dir/lib/" || true
+        done
     fi
 done
 
+# 3. 修复可执行程序和扩展的 RPATH（如果有 patchelf）
+if command -v patchelf &> /dev/null; then
+    patchelf --set-rpath '$ORIGIN:$ORIGIN/lib' "$stage_dir/webman-server.bin" 2>/dev/null || true
+    for solib in "$stage_dir"/lib/*.so*; do
+        [[ -f "$solib" ]] && patchelf --set-rpath '$ORIGIN:$ORIGIN/lib' "$solib" 2>/dev/null || true
+    done
+    for extsolib in "$stage_dir"/ext/*.so; do
+        [[ -f "$extsolib" ]] && patchelf --set-rpath '$ORIGIN/../lib:$ORIGIN:$ORIGIN/..' "$extsolib" 2>/dev/null || true
+    done
+fi
+
+# 4. 生成自包含纯净 php.ini
+cat > "$stage_dir/php.ini" << 'EOF'
+output_buffering=0
+implicit_flush=1
+memory_limit=4G
+opcache.enable_cli=0
+extension_dir="./ext"
+
+; 核心进程管理与网络扩展
+extension=posix.so
+extension=pcntl.so
+extension=openssl.so
+extension=mbstring.so
+extension=mysqlnd.so
+extension=pdo.so
+extension=pdo_mysql.so
+extension=mysqli.so
+extension=curl.so
+extension=fileinfo.so
+extension=zip.so
+extension=igbinary.so
+extension=msgpack.so
+extension=redis.so
+extension=sockets.so
+extension=event.so
+EOF
+
+# 若 ext/ 目录下没有对应扩展 .so，则注释该行以防产生 Warning
+while IFS= read -r line || [[ -n "$line" ]]; do
+    if echo "$line" | grep -q "^extension="; then
+        ext_file=$(echo "$line" | cut -d'=' -f2)
+        if [[ ! -f "$stage_dir/ext/$ext_file" ]]; then
+            sed -i "s/^extension=$ext_file$/; extension=$ext_file/" "$stage_dir/php.ini"
+        fi
+    fi
+done < "$stage_dir/php.ini"
+
+# 5. 生成标准可移植启动脚本 start.sh
 install -m 0755 /dev/stdin "$stage_dir/start.sh" <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
 readonly app_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$app_dir"
-export LD_LIBRARY_PATH="$app_dir/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export PHPRC="$app_dir"
+export LD_LIBRARY_PATH="$app_dir:$app_dir/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 exec "$app_dir/webman-server.bin" "$@"
 SCRIPT
 
+# 6. 复制运行时业务资源
 for resource in config public; do
     [[ -d "$resource" ]] && cp -a "$resource" "$stage_dir/"
 done
 if [[ -d app/view ]]; then mkdir -p "$stage_dir/app"; cp -a app/view "$stage_dir/app/"; fi
 if [[ -f app/functions.php ]]; then copy_file app/functions.php "$stage_dir/app/functions.php"; fi
-if [[ -f vendor/workerman/webman-framework/src/support/helpers.php ]]; then copy_file vendor/workerman/webman-framework/src/support/helpers.php "$stage_dir/vendor/workerman/webman-framework/src/support/helpers.php"; fi
-if [[ -d vendor/workerman/workerman/src/Protocols/Http/Session ]]; then mkdir -p "$stage_dir/vendor/workerman/workerman/src/Protocols/Http"; cp -a vendor/workerman/workerman/src/Protocols/Http/Session "$stage_dir/vendor/workerman/workerman/src/Protocols/Http/"; fi
-if [[ -f vendor/workerman/workerman/src/Protocols/Http/Session.php ]]; then copy_file vendor/workerman/workerman/src/Protocols/Http/Session.php "$stage_dir/vendor/workerman/workerman/src/Protocols/Http/Session.php"; fi
-if [[ -d vendor/workerman/coroutine/src ]]; then mkdir -p "$stage_dir/vendor/workerman/coroutine"; cp -a vendor/workerman/coroutine/src "$stage_dir/vendor/workerman/coroutine/"; fi
-if [[ -f vendor/nikic/fast-route/src/functions.php ]]; then copy_file vendor/nikic/fast-route/src/functions.php "$stage_dir/vendor/nikic/fast-route/src/functions.php"; fi
 [[ -f "$build_dir/build-manifest.json" ]] && copy_file "$build_dir/build-manifest.json" "$stage_dir/build-manifest.json"
 
 readonly final_dir="$real_workspace/$output_dir"

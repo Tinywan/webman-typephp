@@ -50,6 +50,7 @@ class ProjectGenerator
             'vendor/workerman/webman-framework/src',
             'vendor/workerman/coroutine/src',
             'vendor/psr',
+            'vendor/nikic/fast-route/src/functions.php',
             'vendor/nikic/fast-route/src/BadRouteException.php',
             'vendor/nikic/fast-route/src/DataGenerator.php',
             'vendor/nikic/fast-route/src/Dispatcher.php',
@@ -72,7 +73,37 @@ class ProjectGenerator
         // 自动探测 monolog 与 webman-mcp 等常用库
         if (!isset($extraConfig['include']) && !isset($extraConfig['sources'])) {
             if (is_dir($this->basePath . '/vendor/monolog/monolog/src')) {
-                $sources[] = 'vendor/monolog/monolog/src';
+                $monologSources = [
+                    'vendor/monolog/monolog/src/Monolog/Logger.php',
+                    'vendor/monolog/monolog/src/Monolog/LogRecord.php',
+                    'vendor/monolog/monolog/src/Monolog/ResettableInterface.php',
+                    'vendor/monolog/monolog/src/Monolog/DateTimeImmutable.php',
+                    'vendor/monolog/monolog/src/Monolog/ErrorHandler.php',
+                    'vendor/monolog/monolog/src/Monolog/Registry.php',
+                    'vendor/monolog/monolog/src/Monolog/Utils.php',
+                    'vendor/monolog/monolog/src/Monolog/Formatter/FormatterInterface.php',
+                    'vendor/monolog/monolog/src/Monolog/Formatter/NormalizerFormatter.php',
+                    'vendor/monolog/monolog/src/Monolog/Formatter/LineFormatter.php',
+                    'vendor/monolog/monolog/src/Monolog/Formatter/JsonFormatter.php',
+                    'vendor/monolog/monolog/src/Monolog/Handler/HandlerInterface.php',
+                    'vendor/monolog/monolog/src/Monolog/Handler/Handler.php',
+                    'vendor/monolog/monolog/src/Monolog/Handler/AbstractHandler.php',
+                    'vendor/monolog/monolog/src/Monolog/Handler/AbstractProcessingHandler.php',
+                    'vendor/monolog/monolog/src/Monolog/Handler/StreamHandler.php',
+                    'vendor/monolog/monolog/src/Monolog/Handler/RotatingFileHandler.php',
+                    'vendor/monolog/monolog/src/Monolog/Handler/ErrorLogHandler.php',
+                    'vendor/monolog/monolog/src/Monolog/Handler/NullHandler.php',
+                    'vendor/monolog/monolog/src/Monolog/Handler/FormattableHandlerInterface.php',
+                    'vendor/monolog/monolog/src/Monolog/Handler/FormattableHandlerTrait.php',
+                    'vendor/monolog/monolog/src/Monolog/Handler/ProcessableHandlerInterface.php',
+                    'vendor/monolog/monolog/src/Monolog/Handler/ProcessableHandlerTrait.php',
+                    'vendor/monolog/monolog/src/Monolog/Processor',
+                ];
+                foreach ($monologSources as $source) {
+                    if (file_exists($this->basePath . '/' . $source) || is_dir($this->basePath . '/' . $source)) {
+                        $sources[] = $source;
+                    }
+                }
             }
             if (is_dir($this->basePath . '/vendor/tinywan/webman-mcp/src')) {
                 $sources[] = 'vendor/tinywan/webman-mcp/src';
