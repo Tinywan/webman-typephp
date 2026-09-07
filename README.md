@@ -16,7 +16,7 @@
 
 ## 📖 简介
 
-`tinywan/webman-typephp` 是面向 Webman 1.5+/2.x 的 TypePHP AOT 构建插件。它会从现有 Webman 项目生成 AOT 入口和 Linux 编译配置，再交给固定版本的 Docker builder 完成编译，最后整理出可以复制到目标服务器的 `dist/` 目录。
+`tinywan/webman-typephp` 是面向 Webman 2.x 的 [TypePHP AOT](https://swoole.com/aot/zh) 构建插件。它会从现有 Webman 项目生成 AOT 入口和 Linux 编译配置，再交给固定版本的 Docker builder 完成编译，最后整理出可以复制到目标服务器的 `dist/` 目录。
 
 宿主机只需要 PHP、Composer 和 Docker，不需要安装 C++、Clang 或 TypePHP 编译工具链。
 
@@ -181,6 +181,7 @@ composer check
 
 ## 🗺️ 相关文档
 
+- [TypePHP AOT 官方文档](https://swoole.com/aot/zh)
 - [TypePHP 插件方案](TYPEPHP_PLUGIN_PROPOSAL.md)
 - [发布指南](RELEASING.md)
 - [问题反馈](https://github.com/Tinywan/webman-typephp/issues)
