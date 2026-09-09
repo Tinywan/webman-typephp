@@ -19,6 +19,8 @@ use Tinywan\Typephp\Compiler\ProjectGenerator;
 // @mago-ignore lint:cyclomatic-complexity -- The command deliberately coordinates validation, manifest generation, and Docker invocation.
 class PackageCommand extends Command
 {
+    private const DEFAULT_BUILDER_IMAGE = 'tinywan/typephp-webman-builder:v0.1.2';
+
     protected static $defaultName = 'typephp:package';
     protected static $defaultDescription = 'Build Webman project into a Linux x86_64 portable-dir using TypePHP Docker builder.';
 
@@ -27,13 +29,7 @@ class PackageCommand extends Command
         $this
             ->setName('typephp:package')
             ->setDescription('Build Webman project into a Linux x86_64 portable-dir using TypePHP Docker builder')
-            ->addOption(
-                'image',
-                null,
-                InputOption::VALUE_REQUIRED,
-                'Docker builder image reference',
-                'tinywan/typephp-webman-builder:v0.1.0',
-            )
+            ->addOption('image', null, InputOption::VALUE_REQUIRED, 'Docker builder image reference', null)
             ->addOption(
                 'output-dir',
                 null,
@@ -58,7 +54,16 @@ class PackageCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $image = (string) $input->getOption('image');
+        $pluginConfig = [];
+        if (function_exists('config')) {
+            $configuredPluginConfig = config('plugin.tinywan.typephp.app', []);
+            if (is_array($configuredPluginConfig)) {
+                $pluginConfig = $configuredPluginConfig;
+            }
+        }
+
+        $optionImage = $input->getOption('image');
+        $image = $this->resolveBuilderImage(is_string($optionImage) ? $optionImage : null, $pluginConfig);
         $outputDir = trim((string) $input->getOption('output-dir'), '/\\');
         $outputName = (string) $input->getOption('output-name');
         $force = (bool) $input->getOption('force');
@@ -140,12 +145,7 @@ class PackageCommand extends Command
                     'output_name' => $outputName,
                 ],
             ];
-            if (function_exists('config')) {
-                $pluginConfig = config('plugin.tinywan.typephp.app', []);
-                if (is_array($pluginConfig)) {
-                    $extraConfig = array_replace_recursive($pluginConfig, $extraConfig);
-                }
-            }
+            $extraConfig = array_replace_recursive($pluginConfig, $extraConfig);
             $projectYmlPath = $generator->generateProjectYml($extraConfig);
         } catch (\RuntimeException $exception) {
             $output->writeln('<error>[ERROR] ' . $exception->getMessage() . '</error>');
@@ -220,11 +220,16 @@ class PackageCommand extends Command
             // 缺少 phar 扩展时，webman 运行期 include 配置抛 Class "Phar" not found。
             $sanitizedConfigDir = $basePath . DIRECTORY_SEPARATOR . $outputDir . DIRECTORY_SEPARATOR . 'config';
             if (is_dir($sanitizedConfigDir)) {
-                $sanitized = (new \Tinywan\Typephp\Compiler\DistConfigSanitizer())->sanitizeDirectory($sanitizedConfigDir);
+                $sanitized = new \Tinywan\Typephp\Compiler\DistConfigSanitizer()->sanitizeDirectory(
+                    $sanitizedConfigDir,
+                );
                 if ($sanitized !== []) {
                     $output->writeln(
-                        '<comment>[post] Neutralized phar class constants in ' . count($sanitized) . ' config file(s): '
-                        . implode(', ', $sanitized) . '</comment>',
+                        '<comment>[post] Neutralized phar class constants in '
+                        . count($sanitized)
+                        . ' config file(s): '
+                        . implode(', ', $sanitized)
+                        . '</comment>',
                     );
                 }
             }
@@ -250,6 +255,24 @@ class PackageCommand extends Command
             }
         }
         return $hashes;
+    }
+
+    /**
+     * @param array<array-key, mixed> $pluginConfig
+     */
+    private function resolveBuilderImage(?string $optionImage, array $pluginConfig): string
+    {
+        if ($optionImage !== null) {
+            return $optionImage;
+        }
+
+        $dockerConfig = $pluginConfig['docker'] ?? null;
+        if (!is_array($dockerConfig)) {
+            return self::DEFAULT_BUILDER_IMAGE;
+        }
+
+        $configuredImage = $dockerConfig['image'] ?? null;
+        return is_string($configuredImage) ? $configuredImage : self::DEFAULT_BUILDER_IMAGE;
     }
 
     /**
