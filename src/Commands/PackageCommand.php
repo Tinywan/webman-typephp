@@ -19,7 +19,7 @@ use Tinywan\Typephp\Compiler\ProjectGenerator;
 // @mago-ignore lint:cyclomatic-complexity -- The command deliberately coordinates validation, manifest generation, and Docker invocation.
 class PackageCommand extends Command
 {
-    private const DEFAULT_BUILDER_IMAGE = 'tinywan/typephp-webman-builder:v0.1.2';
+    private const DEFAULT_BUILDER_IMAGE = 'tinywan/typephp-webman-builder:v0.1.3';
 
     protected static $defaultName = 'typephp:package';
     protected static $defaultDescription = 'Build Webman project into a Linux x86_64 portable-dir using TypePHP Docker builder.';

@@ -18,7 +18,7 @@ it('leaves the image option unset so configuration can supply it', function (): 
     expect($command->getDefinition()->getOption('image')->getDefault())->toBeNull();
 });
 
-it('ships the v0.1.2 builder image in the plugin configuration', function (): void {
+it('ships the v0.1.3 builder image in the plugin configuration', function (): void {
     $pluginConfig = require dirname(__DIR__, 2) . '/src/config/plugin/tinywan/typephp/app.php';
     if (!is_array($pluginConfig)) {
         throw new RuntimeException('Plugin configuration must be an array.');
@@ -29,7 +29,7 @@ it('ships the v0.1.2 builder image in the plugin configuration', function (): vo
         throw new RuntimeException('Plugin Docker configuration must be an array.');
     }
 
-    expect($dockerConfig['image'] ?? null)->toBe('tinywan/typephp-webman-builder:v0.1.2');
+    expect($dockerConfig['image'] ?? null)->toBe('tinywan/typephp-webman-builder:v0.1.3');
 });
 
 it('resolves the builder image from the option, configuration, then fallback', function (): void {
@@ -44,5 +44,5 @@ it('resolves the builder image from the option, configuration, then fallback', f
         'docker' => ['image' => 'registry.example/configured:v1'],
     ]))->toBe('registry.example/configured:v1');
 
-    expect($method->invoke($command, null, []))->toBe('tinywan/typephp-webman-builder:v0.1.2');
+    expect($method->invoke($command, null, []))->toBe('tinywan/typephp-webman-builder:v0.1.3');
 });
