@@ -156,13 +156,21 @@ class PackageCommand extends Command
         copy($projectYmlPath, $stageBuildDir . DIRECTORY_SEPARATOR . 'project.linux.yml');
         $output->writeln('<comment>[2/3] Generated compiler config: project.linux.yml</comment>');
 
-        // 汇总各类 AOT 生成源（平铺守卫源、静态属性补丁源、可变参数闭包补丁源）
-        $flattenedHashes = $this->collectGeneratedHashes($basePath, ProjectGenerator::GUARDED_SOURCES);
-        $patchedHashes = $this->collectGeneratedHashes($basePath, ProjectGenerator::NULLABLE_STATIC_SOURCES);
-        $variadicHashes = $this->collectGeneratedHashes($basePath, ProjectGenerator::VARIADIC_HANDLER_SOURCES);
-        $this->reportGeneratedSources($output, 'flattened', $flattenedHashes);
-        $this->reportGeneratedSources($output, 'nullable-static', $patchedHashes);
-        $this->reportGeneratedSources($output, 'variadic-handler', $variadicHashes);
+        // 汇总各类 AOT 生成源的输入摘要：标签用于终端提示，同名 <label>_hashes 键写入 manifest
+        $generatedSourceGroups = [
+            'flattened' => ProjectGenerator::GUARDED_SOURCES,
+            'nullable-static' => ProjectGenerator::NULLABLE_STATIC_SOURCES,
+            'stray-bootstrap' => ProjectGenerator::STRAY_BOOTSTRAP_SOURCES,
+            'variadic-handler' => ProjectGenerator::VARIADIC_HANDLER_SOURCES,
+            'switch-terminal' => ProjectGenerator::SWITCH_TERMINAL_SOURCES,
+            'ref-capture' => ProjectGenerator::REF_CAPTURE_SOURCES,
+        ];
+        $generatedHashes = [];
+        foreach ($generatedSourceGroups as $label => $targets) {
+            $hashes = $this->collectGeneratedHashes($basePath, $targets);
+            $this->reportGeneratedSources($output, $label, $hashes);
+            $generatedHashes[str_replace('-', '_', $label) . '_hashes'] = $hashes;
+        }
 
         // 生成 build-manifest.json 记录元数据
         $manifest = [
@@ -175,9 +183,7 @@ class PackageCommand extends Command
             'inputs' => [
                 'main_hash' => file_exists($basePath . '/main.php') ? sha1_file($basePath . '/main.php') : '',
                 'config_hash' => sha1_file($projectYmlPath),
-                'flattened_hashes' => $flattenedHashes,
-                'nullable_static_hashes' => $patchedHashes,
-                'variadic_handler_hashes' => $variadicHashes,
+                ...$generatedHashes,
             ],
         ];
         file_put_contents($stageBuildDir . DIRECTORY_SEPARATOR . 'build-manifest.json', json_encode(
