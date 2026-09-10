@@ -139,6 +139,21 @@ class ProjectGenerator
     ];
 
     /**
+     * 需要字符串化实参补丁的源文件映射：vendor 原文件 => AOT 专用补丁文件。
+     * TypePHP 编译产物以严格类型模式调用内置函数，实参不再经 coercive 模式做
+     * __toString 宽松转换，而 stock PHP 会把 RecursiveDirectoryIterator 产出的
+     * SplFileInfo 隐式转成路径字符串。webman 的 Config::loadFromDir() 与
+     * Route::load() 都直接把迭代器的 $file 传给 is_dir()/substr()/pathinfo()/
+     * include，编译后启动即抛
+     * `is_dir(): Argument #1 ($filename) must be of type string, SplFileInfo given`。
+     * 补丁把这些实参显式改为 $file->isDir() / $file->getPathname()，语义不变。
+     */
+    public const STRINGABLE_ARG_SOURCES = [
+        'vendor/workerman/webman-framework/src/Config.php' => '.typephp/build/webman-config.php',
+        'vendor/workerman/webman-framework/src/Route.php' => '.typephp/build/webman-router.php',
+    ];
+
+    /**
      * 类型化引用捕获补丁的字面替换规则：源文件 => [搜索串 => 替换串]。
      * 搜索串为 vendor 源码中的精确字面量（注意各文件 CRLF/LF 差异）；
      * 未匹配时静默跳过（版本差异容忍）。
@@ -208,6 +223,27 @@ class ProjectGenerator
             '            $timedOut = false;' . "\r\n"
             . '            $timerId = null;' . "\r\n"
             => '            $timerId = null;' . "\r\n",
+        ],
+    ];
+
+    /**
+     * 字符串化实参补丁的字面替换规则：源文件 => [搜索串 => 替换串]。
+     * 迭代器产出的 $file 是 SplFileInfo，凡把它当路径传给内置函数的位置统一改为
+     * `$file->getPathname()`。需要按缩进消歧的同名语句只在行首 \n 锚定：行尾锚定
+     * 在 CRLF 文件上永不命中（分号与 \n 之间还夹着 \r）；未匹配时静默跳过。
+     */
+    protected const STRINGABLE_ARG_REPLACEMENTS = [
+        'vendor/workerman/webman-framework/src/Config.php' => [
+            'if (is_dir($file) || $file->getExtension()'
+            => 'if (is_dir($file->getPathname()) || $file->getExtension()',
+            'substr($file, 0, -4)' => 'substr($file->getPathname(), 0, -4)',
+            "\n            \$config = include \$file;"
+            => "\n            \$config = include \$file->getPathname();",
+        ],
+        'vendor/workerman/webman-framework/src/Route.php' => [
+            'pathinfo($file, PATHINFO_DIRNAME)' => 'pathinfo($file->getPathname(), PATHINFO_DIRNAME)',
+            "\n                    require_once \$file;"
+            => "\n                    require_once \$file->getPathname();",
         ],
     ];
 
@@ -628,6 +664,53 @@ class ProjectGenerator
     }
 
     /**
+     * 为把 SplFileInfo 当路径实参传给内置函数的源文件生成补丁后的 AOT 专用版本
+     *
+     * 读取项目实际安装的源文件（webman-framework Config.php、Route.php），按
+     * STRINGABLE_ARG_REPLACEMENTS 把迭代器产出的 $file 实参显式改为
+     * `$file->getPathname()` 后写入打包工作区。返回生成的补丁文件相对路径
+     * 列表（不含未安装的源）。
+     *
+     * @return list<string>
+     */
+    public function generateStringableArgSources(): array
+    {
+        $generated = [];
+        foreach (self::STRINGABLE_ARG_SOURCES as $sourceRel => $targetRel) {
+            $sourceFile = $this->basePath . '/' . $sourceRel;
+            if (!is_file($sourceFile)) {
+                continue;
+            }
+            $content = file_get_contents($sourceFile);
+            if ($content === false) {
+                throw new \RuntimeException('Unable to read the stringable-arg source file: ' . $sourceFile);
+            }
+
+            $targetFile = $this->basePath . '/' . $targetRel;
+            $directory = dirname($targetFile);
+            if (!is_dir($directory) && !mkdir($directory, 0777, true) && !is_dir($directory)) {
+                throw new \RuntimeException('Unable to create the TypePHP build directory: ' . $directory);
+            }
+            if (file_put_contents($targetFile, $this->patchStringableArgs($sourceRel, $content)) === false) {
+                throw new \RuntimeException('Unable to write the AOT stringable-arg source: ' . $targetFile);
+            }
+            $generated[] = $targetRel;
+        }
+        return $generated;
+    }
+
+    /**
+     * 按字面规则把字符串化对象实参改为显式取路径
+     */
+    protected function patchStringableArgs(string $sourceRel, string $content): string
+    {
+        foreach (self::STRINGABLE_ARG_REPLACEMENTS[$sourceRel] ?? [] as $search => $replacement) {
+            $content = str_replace($search, $replacement, $content);
+        }
+        return $content;
+    }
+
+    /**
      * 为含非终结 switch case 的源文件生成补丁后的 AOT 专用版本
      *
      * 读取项目实际安装的源文件（webman-framework App.php、monolog Utils.php），
@@ -1036,7 +1119,21 @@ class ProjectGenerator
             $this->generateRefCaptureSources(),
             static fn(string $target): bool => !in_array($target, $sources, true),
         ));
-        $aotGeneratedTargets = [...$flattenedTargets, ...$patchedTargets, ...$variadicTargets, ...$strayStrippedTargets, ...$switchTerminalTargets, ...$refCaptureTargets];
+        // 生成 AOT 专用字符串化实参补丁源（webman-framework Config/Route），保证
+        // 目录迭代器产出的 SplFileInfo 不再触发严格类型内置函数 TypeError
+        $stringableTargets = array_values(array_filter(
+            $this->generateStringableArgSources(),
+            static fn(string $target): bool => !in_array($target, $sources, true),
+        ));
+        $aotGeneratedTargets = [
+            ...$flattenedTargets,
+            ...$patchedTargets,
+            ...$variadicTargets,
+            ...$strayStrippedTargets,
+            ...$switchTerminalTargets,
+            ...$refCaptureTargets,
+            ...$stringableTargets,
+        ];
         if ($aotGeneratedTargets !== []) {
             $position = array_search('main.php', $sources, true);
             if ($position === false) {
@@ -1089,6 +1186,8 @@ class ProjectGenerator
             'vendor/workerman/workerman/src/Connection/AsyncTcpConnection.php',
             'vendor/workerman/workerman/src/Events/Select.php',
             'vendor/workerman/webman-framework/src/File.php',
+            'vendor/workerman/webman-framework/src/Config.php',
+            'vendor/workerman/webman-framework/src/Route.php',
             'vendor/workerman/coroutine/tests',
             'vendor/workerman/coroutine/stubs',
             'vendor/workerman/coroutine/src/Barrier/Swow.php',

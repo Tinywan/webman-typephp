@@ -164,6 +164,7 @@ class PackageCommand extends Command
             'variadic-handler' => ProjectGenerator::VARIADIC_HANDLER_SOURCES,
             'switch-terminal' => ProjectGenerator::SWITCH_TERMINAL_SOURCES,
             'ref-capture' => ProjectGenerator::REF_CAPTURE_SOURCES,
+            'stringable-arg' => ProjectGenerator::STRINGABLE_ARG_SOURCES,
         ];
         $generatedHashes = [];
         foreach ($generatedSourceGroups as $label => $targets) {

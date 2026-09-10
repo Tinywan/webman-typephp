@@ -927,3 +927,103 @@ it('rewrites typed-reference captures into AOT sources', function (): void {
         removeTypephpTestDirectory($directory);
     }
 });
+
+it('rewrites stringable iterator arguments into AOT sources', function (): void {
+    $directory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'typephp-test-' . bin2hex(random_bytes(4));
+    mkdir($directory, 0777, true);
+    mkdir($directory . '/vendor/workerman/webman-framework/src', 0777, true);
+
+    // 真实 vendor 的 Config.php 为 LF、Route.php 为 CRLF；按缩进消歧的规则只在
+    // 行首 \n 锚定，这里统一按 CRLF 造样例以证明两种行尾都能命中
+    file_put_contents(
+        $directory . '/vendor/workerman/webman-framework/src/Config.php',
+        implode("\r\n", [
+            '<?php',
+            'namespace Webman;',
+            'class Config',
+            '{',
+            '    public static function loadFromDir(string $configPath, array $excludeFile = []): array',
+            '    {',
+            '        foreach ($iterator as $file) {',
+            "            if (is_dir(\$file) || \$file->getExtension() != 'php' || in_array(\$file->getBaseName('.php'), \$excludeFile)) {",
+            '                continue;',
+            '            }',
+            "            \$relativePath = str_replace(\$configPath . DIRECTORY_SEPARATOR, '', substr(\$file, 0, -4));",
+            '            $config = include $file;',
+            '        }',
+            '        return $allConfig;',
+            '    }',
+            '    protected static function read(string $key): mixed',
+            '    {',
+            '            if (is_file($file = "$path/$section.php")) {',
+            '                $config = include $file;',
+            '            }',
+            '    }',
+            '}',
+            '',
+        ]),
+    );
+    file_put_contents(
+        $directory . '/vendor/workerman/webman-framework/src/Route.php',
+        implode("\r\n", [
+            '<?php',
+            'namespace Webman;',
+            'class Route',
+            '{',
+            '    public static function load(array $paths): void',
+            '    {',
+            '                foreach ($iterator as $file) {',
+            "                    if (\$file->getBaseName('.php') !== 'route') {",
+            '                        continue;',
+            '                    }',
+            "                    \$appConfigFile = pathinfo(\$file, PATHINFO_DIRNAME) . '/app.php';",
+            '                    require_once $file;',
+            '                }',
+            '            }',
+            '        }',
+            '    }',
+            '    protected static function loadAnnotationRoutes(): void',
+            '    {',
+            '        $file = $foundFile->getPathname();',
+            '                require_once $file;',
+            '    }',
+            '}',
+            '',
+        ]),
+    );
+
+    try {
+        $generator = new ProjectGenerator($directory);
+        expect($generator->generateStringableArgSources())->toBe([
+            '.typephp/build/webman-config.php',
+            '.typephp/build/webman-router.php',
+        ]);
+
+        // 迭代器实参显式取路径，严格类型内置函数不再收到 SplFileInfo
+        $config = (string) file_get_contents($directory . '/.typephp/build/webman-config.php');
+        expect($config)
+            ->toContain('if (is_dir($file->getPathname()) || $file->getExtension()')
+            ->toContain("substr(\$file->getPathname(), 0, -4)")
+            ->toContain('$config = include $file->getPathname();')
+            ->toContain('        $config = include $file;')
+            ->toContain("\r\n");
+        // read() 中 16 空格缩进的同名语句（$file 已是字符串）不被 12 空格规则误伤
+        expect(substr_count($config, '$config = include $file;'))->toBe(1);
+
+        $router = (string) file_get_contents($directory . '/.typephp/build/webman-router.php');
+        expect($router)
+            ->toContain("pathinfo(\$file->getPathname(), PATHINFO_DIRNAME) . '/app.php';")
+            ->toContain('require_once $file->getPathname();')
+            ->toContain('                require_once $file;');
+        expect(substr_count($router, 'require_once $file;'))->toBe(1);
+
+        $yml = (string) file_get_contents($generator->generateProjectYml([]));
+        expect($yml)
+            ->toContain('  - .typephp/build/webman-config.php' . "\n")
+            ->toContain('  - .typephp/build/webman-router.php' . "\n")
+            ->toContain("\n  - vendor/workerman/webman-framework/src/Config.php\n")
+            ->toContain("\n  - vendor/workerman/webman-framework/src/Route.php\n");
+    } finally {
+        removeTypephpTestDirectory($directory);
+    }
+});
