@@ -597,3 +597,333 @@ it('patches under-declared handler closures into variadic AOT sources', function
         removeTypephpTestDirectory($directory);
     }
 });
+
+it('strips stray top-level bootstrap calls into AOT sources', function (): void {
+    $directory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'typephp-test-' . bin2hex(random_bytes(4));
+    mkdir($directory, 0777, true);
+
+    $httpDirectory = $directory . '/vendor/workerman/workerman/src/Protocols/Http';
+    mkdir($httpDirectory . '/Session', 0777, true);
+    $coroutineDirectory = $directory . '/vendor/workerman/coroutine/src';
+    mkdir($coroutineDirectory . '/Context', 0777, true);
+    mkdir($coroutineDirectory . '/Coroutine', 0777, true);
+
+    // 顶层引导调用（workerman/coroutine 与 workerman 的模块初始化写法）
+    file_put_contents(
+        $httpDirectory . '/Session.php',
+        "<?php\nnamespace Workerman\\Protocols\\Http;\nclass Session\n{\n"
+        . "    public static function init(): void\n    {\n    }\n}\n\n// Init session handler\nSession::init();\n",
+    );
+    file_put_contents(
+        $httpDirectory . '/Session/FileSessionHandler.php',
+        "<?php\nnamespace Workerman\\Protocols\\Http\\Session;\nclass FileSessionHandler\n{\n"
+        . "    public static function init(): void\n    {\n    }\n}\n\nFileSessionHandler::init();\n",
+    );
+    file_put_contents(
+        $coroutineDirectory . '/Context/Fiber.php',
+        "<?php\nnamespace Workerman\\Coroutine\\Context;\nclass Fiber\n{\n"
+        . "    public static function initContext(): void\n    {\n    }\n}\n\nFiber::initContext();\n",
+    );
+    file_put_contents(
+        $coroutineDirectory . '/Coroutine/Fiber.php',
+        "<?php\nnamespace Workerman\\Coroutine\\Coroutine;\nclass Fiber\n{\n"
+        . "    public static function init(): void\n    {\n    }\n}\n\nFiber::init();\n",
+    );
+    file_put_contents(
+        $coroutineDirectory . '/Coroutine.php',
+        "<?php\nnamespace Workerman\\Coroutine;\nclass Coroutine\n{\n"
+        . "    public static function init(): void\n    {\n    }\n}\n\nCoroutine::init();\n",
+    );
+    // 回归用例：静态属性补丁源同样必须剥掉尾部顶层引导调用，否则 AOT 扫描期报 stray code Fatal
+    file_put_contents(
+        $coroutineDirectory . '/Context.php',
+        "<?php\nnamespace Workerman\\Coroutine;\nclass Context\n{\n"
+        . "    protected static string \$driver;\n\n"
+        . "    public static function initDriver(): void\n    {\n        static::\$driver ??= 'Fiber';\n    }\n}\n\nContext::initDriver();\n",
+    );
+
+    try {
+        $generator = new ProjectGenerator($directory);
+        expect($generator->generateStrayBootstrapSources())->toBe([
+            '.typephp/build/http-session.php',
+            '.typephp/build/http-session-file-handler.php',
+            '.typephp/build/coroutine-context-fiber.php',
+            '.typephp/build/coroutine-fiber.php',
+            '.typephp/build/coroutine-coroutine.php',
+        ]);
+
+        // 每个剥离后的 AOT 源以类结束大括号收尾，紧邻引导调用的注释行一并移除；init 方法体保持原样
+        foreach (ProjectGenerator::STRAY_BOOTSTRAP_SOURCES as $target) {
+            $content = rtrim((string) file_get_contents($directory . '/' . $target));
+            expect(str_ends_with($content, '}'))->toBeTrue();
+        }
+        $session = (string) file_get_contents($directory . '/.typephp/build/http-session.php');
+        expect(str_contains($session, '// Init session handler'))->toBeFalse();
+        expect($session)->toContain("class Session\n{\n    public static function init(): void");
+
+        expect($generator->generateNullableStaticSources())->toBe(['.typephp/build/coroutine-context.php']);
+
+        // 回归：静态属性补丁与顶层引导剥离在同一产物上串联生效
+        $context = (string) file_get_contents($directory . '/.typephp/build/coroutine-context.php');
+        expect($context)
+            ->toContain('protected static ?string $driver = null;')
+            ->toContain("static::\$driver ??= 'Fiber';");
+        expect(str_contains($context, 'Context::initDriver();'))->toBeFalse();
+
+        // yml 注入剥离源并忽略 vendor 原版
+        $yml = (string) file_get_contents($generator->generateProjectYml([]));
+        expect($yml)
+            ->toContain('  - .typephp/build/http-session.php' . "\n")
+            ->toContain('  - .typephp/build/coroutine-coroutine.php' . "\n")
+            ->toContain("\n  - vendor/workerman/workerman/src/Protocols/Http/Session.php\n")
+            ->toContain("\n  - vendor/workerman/coroutine/src/Context/Fiber.php\n")
+            ->toContain("\n  - vendor/workerman/coroutine/src/Coroutine.php\n");
+    } finally {
+        removeTypephpTestDirectory($directory);
+    }
+});
+
+it('rewrites fall-through switch cases into terminal AOT sources', function (): void {
+    $directory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'typephp-test-' . bin2hex(random_bytes(4));
+    mkdir($directory, 0777, true);
+    mkdir($directory . '/vendor/workerman/webman-framework/src', 0777, true);
+    mkdir($directory . '/vendor/monolog/monolog/src/Monolog', 0777, true);
+
+    file_put_contents(
+        $directory . '/vendor/workerman/webman-framework/src/App.php',
+        implode("\n", [
+            '<?php',
+            'namespace Webman;',
+            'class App',
+            '{',
+            '    public static function getReflector(callable|string $call, ?string $cacheKey): mixed',
+            '    {',
+            "        if (\$call instanceof Closure || is_string(\$call)) {",
+            '            $reflector = new ReflectionFunction($call);',
+            '        } else {',
+            '            $reflector = new ReflectionMethod($call[0], $call[1]);',
+            '        }',
+            '',
+            '        if ($cacheKey !== null) {',
+            '            static::$reflectorCache[$cacheKey] = $reflector;',
+            '            if (count(static::$reflectorCache) > 1024) {',
+            '                unset(static::$reflectorCache[key(static::$reflectorCache)]);',
+            '            }',
+            '        }',
+            '',
+            '        return $reflector;',
+            '    }',
+            "    public static function stringify(mixed \$data): string",
+            '    {',
+            "        switch (gettype(\$data)) {",
+            "            case 'object':",
+            "                if (!method_exists(\$data, '__toString')) {",
+            "                    return 'Object';",
+            '                }',
+            '            default:',
+            '                return (string)$data;',
+            '        }',
+            '    }',
+            '}',
+            '',
+        ]),
+    );
+    file_put_contents(
+        $directory . '/vendor/monolog/monolog/src/Monolog/Utils.php',
+        implode("\n", [
+            '<?php',
+            'namespace Monolog;',
+            'class Utils',
+            '{',
+            "    public static function throwJsonError(int \$code): void",
+            '    {',
+            '        switch ($code) {',
+            "            case 8:",
+            "                \$msg = 'Syntax error, malformed JSON';",
+            '                break;',
+            '            default:',
+            "                \$msg = 'Unknown error';",
+            '        }',
+            '    }',
+            '    public static function parseBytes(string $value): ?int',
+            '    {',
+            "        \$val = (int) \$value;",
+            '        switch (strtolower(substr($value, -1))) {',
+            "            case 'g':",
+            '                $val *= 1024;',
+            "            case 'm':",
+            '                $val *= 1024;',
+            "            case 'k':",
+            '                $val *= 1024;',
+            '        }',
+            '        return $val;',
+            '    }',
+            '}',
+            '',
+        ]),
+    );
+
+    try {
+        $generator = new ProjectGenerator($directory);
+        expect($generator->generateSwitchTerminalSources())->toBe([
+            '.typephp/build/webman-app.php',
+            '.typephp/build/monolog-utils.php',
+        ]);
+
+        // 同一变量跨 ReflectionFunction/ReflectionMethod 重赋值改为分支内独立变量 + 提前 return
+        $app = (string) file_get_contents($directory . '/.typephp/build/webman-app.php');
+        expect($app)
+            ->toContain('$reflectorFunction = new ReflectionFunction($call);')
+            ->toContain('$reflectorMethod = new ReflectionMethod($call[0], $call[1]);')
+            ->toContain('return $reflectorMethod;');
+        expect(str_contains($app, '$reflector = new Reflection'))->toBeFalse();
+
+        // case 'object' 不再落空到 default，自带终结 return
+        expect($app)->toContain("}\n                return (string)\$data;\n            default:");
+
+        $utils = (string) file_get_contents($directory . '/.typephp/build/monolog-utils.php');
+        expect($utils)->toContain("\$msg = 'Unknown error';\n                break;\n        }");
+
+        // g/m/k 级联落空展开为各 case 独立连乘，总量不变
+        expect($utils)->toContain(
+            "case 'g':\n                \$val *= 1024;\n                \$val *= 1024;\n                \$val *= 1024;\n                break;",
+        );
+        expect($utils)->toContain(
+            "case 'm':\n                \$val *= 1024;\n                \$val *= 1024;\n                break;",
+        );
+        expect($utils)->toContain("case 'k':\n                \$val *= 1024;\n                break;");
+
+        $yml = (string) file_get_contents($generator->generateProjectYml([]));
+        expect($yml)
+            ->toContain('  - .typephp/build/webman-app.php' . "\n")
+            ->toContain('  - .typephp/build/monolog-utils.php' . "\n")
+            ->toContain("\n  - vendor/workerman/webman-framework/src/App.php\n")
+            ->toContain("\n  - vendor/monolog/monolog/src/Monolog/Utils.php\n");
+    } finally {
+        removeTypephpTestDirectory($directory);
+    }
+});
+
+it('rewrites typed-reference captures into AOT sources', function (): void {
+    $directory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'typephp-test-' . bin2hex(random_bytes(4));
+    mkdir($directory, 0777, true);
+    mkdir($directory . '/vendor/workerman/webman-framework/src/Route', 0777, true);
+    $coroutineDirectory = $directory . '/vendor/workerman/coroutine/src';
+    mkdir($coroutineDirectory . '/Barrier', 0777, true);
+    mkdir($coroutineDirectory . '/Channel', 0777, true);
+
+    // 真实 vendor 的 Route.php 与协程驱动文件为 CRLF，补丁字面量按 CRLF 匹配
+    file_put_contents(
+        $directory . '/vendor/workerman/webman-framework/src/Route/Route.php',
+        implode("\r\n", [
+            '<?php',
+            'namespace Webman\Route;',
+            'class Route',
+            '{',
+            '    public function url(array $parameters = []): string',
+            '    {',
+            '        $path = $this->path;',
+            "        \$path = preg_replace_callback('/\\{(.*?)(?:\\:[^\\}]*?)*?\\}/', function (\$matches) use (&\$parameters) {",
+            '            if (!$parameters) {',
+            '                return $matches[0];',
+            '            }',
+            '            if (isset($parameters[$matches[1]])) {',
+            '                $value = $parameters[$matches[1]];',
+            '                unset($parameters[$matches[1]]);',
+            '                return $value;',
+            '            }',
+            '            $key = key($parameters);',
+            '            if (is_int($key)) {',
+            '                $value = $parameters[$key];',
+            '                unset($parameters[$key]);',
+            '                return $value;',
+            '            }',
+            '            return $matches[0];',
+            '        }, $path);',
+            "        return count(\$parameters) > 0 ? \$path . '?' . http_build_query(\$parameters) : \$path;",
+            '    }',
+            '}',
+            '',
+        ]),
+    );
+    file_put_contents(
+        $coroutineDirectory . '/Barrier/Fiber.php',
+        implode("\r\n", [
+            '<?php',
+            'namespace Workerman\Coroutine\Barrier;',
+            'class Fiber',
+            '{',
+            '    public static function wait(array $dependencies, float $timeout): bool',
+            '    {',
+            '        $resumed = false;',
+            '        $timerId = null;',
+            '        $coroutine = 1;',
+            '        if ($timeout > 0) {',
+            '            function() use ($coroutine, &$resumed, &$timerId) {',
+            '                $timerId = 2;',
+            '            };',
+            '        }',
+            '        return $resumed;',
+            '    }',
+            '}',
+            '',
+        ]),
+    );
+    file_put_contents(
+        $coroutineDirectory . '/Channel/Fiber.php',
+        implode("\r\n", [
+            '<?php',
+            'namespace Workerman\Coroutine\Channel;',
+            'class Fiber',
+            '{',
+            '    public function push($value, float $timeout = -1): bool',
+            '    {',
+            "        if (\$timeout > 0) {",
+            '            $timedOut = false;',
+            '            $timerId = null;',
+            '            function() use (&$timedOut) {',
+            '                $timedOut = true;',
+            '            };',
+            '        }',
+            '        return true;',
+            '    }',
+            '}',
+            '',
+        ]),
+    );
+
+    try {
+        $generator = new ProjectGenerator($directory);
+        expect($generator->generateRefCaptureSources())->toBe([
+            '.typephp/build/webman-route.php',
+            '.typephp/build/coroutine-barrier-fiber.php',
+            '.typephp/build/coroutine-channel-fiber.php',
+        ]);
+
+        // array 参数改为按值捕获 + 捕获未初始化的引用槽
+        $route = (string) file_get_contents($directory . '/.typephp/build/webman-route.php');
+        expect($route)->toContain('function ($matches) use ($parameters, &$remaining) {');
+        expect(str_contains($route, 'use (&$parameters)'))->toBeFalse();
+
+        // 被引用捕获的 $resumed 去掉初始化即为 REF 槽；只读的 $timerId 改为按值捕获
+        $barrier = (string) file_get_contents($directory . '/.typephp/build/coroutine-barrier-fiber.php');
+        expect($barrier)->toContain('function() use ($coroutine, &$resumed, $timerId) {');
+        expect(str_contains($barrier, '$resumed = false;'))->toBeFalse();
+        expect($barrier)->toContain('        $timerId = null;');
+
+        $channel = (string) file_get_contents($directory . '/.typephp/build/coroutine-channel-fiber.php');
+        expect(str_contains($channel, '$timedOut = false;'))->toBeFalse();
+        expect($channel)->toContain('            $timerId = null;');
+
+        $yml = (string) file_get_contents($generator->generateProjectYml([]));
+        expect($yml)
+            ->toContain('  - .typephp/build/webman-route.php' . "\n")
+            ->toContain('  - .typephp/build/coroutine-barrier-fiber.php' . "\n")
+            ->toContain('  - .typephp/build/coroutine-channel-fiber.php' . "\n")
+            ->toContain("\n  - vendor/workerman/webman-framework/src/Route/Route.php\n")
+            ->toContain("\n  - vendor/workerman/coroutine/src/Barrier/Fiber.php\n")
+            ->toContain("\n  - vendor/workerman/coroutine/src/Channel/Fiber.php\n");
+    } finally {
+        removeTypephpTestDirectory($directory);
+    }
+});

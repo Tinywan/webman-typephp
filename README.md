@@ -26,9 +26,12 @@
 - 🧩 **全版本 Webman 兼容**：自动把 `webman-framework` 的 `helpers.php` 与 `fast-route` 的 `functions.php` 平铺为 AOT 专用版本（`.typephp/build/`），规避新版框架顶层 `if` 守卫触发的 `Unsupported statement: Stmt_If` 编译错误或静默跳过，同时保证 `base_path()`、`config()`、`FastRoute\simpleDispatcher()` 等全局函数完整编译进二进制。
 - 🩹 **协程静态属性补丁**：自动把 `workerman/coroutine` 的 `Context`/`WaitGroup`/`Barrier` 中未初始化的标量静态属性补成可空并默认 `null`（`.typephp/build/`），规避 TypePHP 编译产物把未初始化标量静态读作零值导致 `??=` 守卫失效、进而触发 `Invalid callback ::destroy` 崩溃循环的问题。
 - 🔧 **可变参数闭包补丁**：自动把 `Worker`/`TcpConnection`/`AsyncTcpConnection`/`Select`/webman `File` 中签名不足的错误处理与信号闭包补成可变参数形态（`.typephp/build/`），规避 TypePHP 编译产物对闭包调用强制精确参数个数（PHP 语义允许多传忽略）导致每次 accept 抛 `ArgumentCountError`、worker 崩溃循环的问题。
+- 🧹 **顶层引导调用剥离**：自动删除 `workerman` 的 `Http/Session`、`FileSessionHandler` 与 `workerman/coroutine` 的 `Context`/`Coroutine` 系列文件尾部 `Session::init();` 之类顶层调用（`.typephp/build/`），规避 AOT 编译器只接受顶层声明而在扫描期抛 `All execution code must be within a function, found stray code` Fatal；这些初始化由 `main.php` 入口带 `class_exists` 守卫在启动时完成，行为不变。
+- 🔀 **switch 终结补丁**：自动把 webman `App::stringify()` 落空到 `default`、`Monolog\Utils` 缺 `break` 的 JSON 错误分支与 `g/m/k` 级联连乘改写为语义等价的终结形态（`.typephp/build/`），规避 TypePHP 要求每个非空 case 以 `return`/`break`/`throw` 结尾的 `switch case must end with` Fatal。
+- 🪝 **类型化引用捕获补丁**：自动改写 webman `Route::url()` 与协程 `Barrier`/`Channel` Fiber 驱动中「先赋值再 `use (&$var)`」的捕获形态（`.typephp/build/`），规避 TypePHP v0.8 类型化引用体系对固定类型变量抛 `Cannot create a reference to variable of fixed type` Fatal。
 - 📦 **目录化交付**：输出原生二进制、启动脚本、运行库和 Webman 资源，结构清晰、便于发布。
 - 🛡️ **安全默认值**：已有输出不会被静默覆盖；必须显式使用 `--force`，旧目录会先备份。
-- 🧾 **可追溯构建**：`build-manifest.json` 记录输入摘要、镜像和构建时间，不写入密钥或令牌。
+- 🧾 **可追溯构建**：`build-manifest.json` 记录入口、配置与每组 AOT 生成源的输入摘要、镜像和构建时间，不写入密钥或令牌。
 - ☁️ **CI/CD 就绪**：可生成 Linux amd64 构建工作流，并由 Git tag 触发 Docker Hub 镜像发布。
 
 ## 🚀 快速开始

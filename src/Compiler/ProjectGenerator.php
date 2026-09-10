@@ -46,6 +46,21 @@ class ProjectGenerator
     ];
 
     /**
+     * 需要剥离顶层引导调用的源文件映射：vendor 原文件 => AOT 专用补丁文件。
+     * workerman 系列源文件在类声明之后以顶层 `Session::init();` 等调用触发模块
+     * 初始化，而 TypePHP 编译器只接受顶层的 Class/Function/Use/Const/Namespace
+     * 声明，扫描期即报 `found stray code` Fatal。main.php 桩已带 class_exists
+     * 守卫在启动时调用全部 init 方法，这些顶层调用在 AOT 源里属于冗余，可安全剥离。
+     */
+    public const STRAY_BOOTSTRAP_SOURCES = [
+        'vendor/workerman/workerman/src/Protocols/Http/Session.php' => '.typephp/build/http-session.php',
+        'vendor/workerman/workerman/src/Protocols/Http/Session/FileSessionHandler.php' => '.typephp/build/http-session-file-handler.php',
+        'vendor/workerman/coroutine/src/Context/Fiber.php' => '.typephp/build/coroutine-context-fiber.php',
+        'vendor/workerman/coroutine/src/Coroutine/Fiber.php' => '.typephp/build/coroutine-fiber.php',
+        'vendor/workerman/coroutine/src/Coroutine.php' => '.typephp/build/coroutine-coroutine.php',
+    ];
+
+    /**
      * 需要可变参数闭包补丁的源文件映射：vendor 原文件 => AOT 专用补丁文件。
      * TypePHP 编译产物对用户态闭包调用强制精确参数个数，而 PHP 语义允许调用时
      * 多传参数（多余参数被忽略）。set_error_handler 固定以 4 个参数调用处理器、
@@ -96,6 +111,216 @@ class ProjectGenerator
         . "\n";
 
     /**
+     * 需要 switch 终结语句补丁的源文件映射：vendor 原文件 => AOT 专用补丁文件。
+     * TypePHP 编译器要求每个非空 case 体以 return/break/continue/exit/throw 结束
+     * （不支持落空 fall-through）。App::stringify() 的 `case 'object'` 依赖落空到
+     * default 返回 `(string)$data`，Monolog Utils 的 JSON 错误 default 缺 break、
+     * 内存单位 g/m/k 依赖级联落空连乘 1024。补丁把这些 case 改写为语义等价的
+     * 终结形态（object 直接 return、default 补 break、级联展开为各 case 独立连乘）。
+     */
+    public const SWITCH_TERMINAL_SOURCES = [
+        'vendor/workerman/webman-framework/src/App.php' => '.typephp/build/webman-app.php',
+        'vendor/monolog/monolog/src/Monolog/Utils.php' => '.typephp/build/monolog-utils.php',
+    ];
+
+    /**
+     * 需要类型化引用捕获补丁的源文件映射：vendor 原文件 => AOT 专用补丁文件。
+     * TypePHP 的 v0.8 类型化引用体系要求：被 `use (&$var)` 按引用捕获的变量在捕获点
+     * 不能已持有固定类型（数组参数、bool/int/string 局部变量均属固定类型），否则报
+     * `Cannot create a reference to variable $x of fixed type` Fatal；捕获未初始化
+     * 变量则编译为普通 Zend 引用槽，与 stock PHP 语义一致。Route::url()、协程
+     * Barrier/Fiber 与 Channel/Fiber 都先 `$timedOut = false;` 再按引用捕获，补丁
+     * 删除这类初始化（或改为捕获未初始化变量），使引用语义经 Zend 引用 ABI 恢复。
+     */
+    public const REF_CAPTURE_SOURCES = [
+        'vendor/workerman/webman-framework/src/Route/Route.php' => '.typephp/build/webman-route.php',
+        'vendor/workerman/coroutine/src/Barrier/Fiber.php' => '.typephp/build/coroutine-barrier-fiber.php',
+        'vendor/workerman/coroutine/src/Channel/Fiber.php' => '.typephp/build/coroutine-channel-fiber.php',
+    ];
+
+    /**
+     * 类型化引用捕获补丁的字面替换规则：源文件 => [搜索串 => 替换串]。
+     * 搜索串为 vendor 源码中的精确字面量（注意各文件 CRLF/LF 差异）；
+     * 未匹配时静默跳过（版本差异容忍）。
+     */
+    protected const REF_CAPTURE_REPLACEMENTS = [
+        // Route::url() 把 array 参数 $parameters 按引用捕获进 preg_replace_callback
+        // 回调消耗已用参数。改为按值捕获 $parameters + 按引用捕获未初始化的
+        // $remaining（首次回调内拷贝，回调未执行时回退为完整参数表拼查询串）。
+        'vendor/workerman/webman-framework/src/Route/Route.php' => [
+            '        $path = preg_replace_callback(\'/\\{(.*?)(?:\\:[^\\}]*?)*?\\}/\', function ($matches) use (&$parameters) {' . "\r\n"
+            . '            if (!$parameters) {' . "\r\n"
+            . '                return $matches[0];' . "\r\n"
+            . '            }' . "\r\n"
+            . '            if (isset($parameters[$matches[1]])) {' . "\r\n"
+            . '                $value = $parameters[$matches[1]];' . "\r\n"
+            . '                unset($parameters[$matches[1]]);' . "\r\n"
+            . '                return $value;' . "\r\n"
+            . '            }' . "\r\n"
+            . '            $key = key($parameters);' . "\r\n"
+            . '            if (is_int($key)) {' . "\r\n"
+            . '                $value = $parameters[$key];' . "\r\n"
+            . '                unset($parameters[$key]);' . "\r\n"
+            . '                return $value;' . "\r\n"
+            . '            }' . "\r\n"
+            . '            return $matches[0];' . "\r\n"
+            . '        }, $path);' . "\r\n"
+            . '        return count($parameters) > 0 ? $path . \'?\' . http_build_query($parameters) : $path;'
+            => '        $path = preg_replace_callback(\'/\\{(.*?)(?:\\:[^\\}]*?)*?\\}/\', function ($matches) use ($parameters, &$remaining) {' . "\r\n"
+                . '            if ($remaining === null) {' . "\r\n"
+                . '                $remaining = $parameters;' . "\r\n"
+                . '            }' . "\r\n"
+                . '            if (!$remaining) {' . "\r\n"
+                . '                return $matches[0];' . "\r\n"
+                . '            }' . "\r\n"
+                . '            if (isset($remaining[$matches[1]])) {' . "\r\n"
+                . '                $value = $remaining[$matches[1]];' . "\r\n"
+                . '                unset($remaining[$matches[1]]);' . "\r\n"
+                . '                return $value;' . "\r\n"
+                . '            }' . "\r\n"
+                . '            $key = key($remaining);' . "\r\n"
+                . '            if (is_int($key)) {' . "\r\n"
+                . '                $value = $remaining[$key];' . "\r\n"
+                . '                unset($remaining[$key]);' . "\r\n"
+                . '                return $value;' . "\r\n"
+                . '            }' . "\r\n"
+                . '            return $matches[0];' . "\r\n"
+                . '        }, $path);' . "\r\n"
+                . '        if ($remaining === null) {' . "\r\n"
+                . '            $remaining = $parameters;' . "\r\n"
+                . '        }' . "\r\n"
+                . '        return count($remaining) > 0 ? $path . \'?\' . http_build_query($remaining) : $path;',
+        ],
+        // Barrier/Fiber::wait() 的 &$resumed 无外层赋值 → 捕获为 REF 槽，删除
+        // `$resumed = false;` 即可。$timerId 则先被 `Timer::delay()` 返回值定型为
+        // Int 再被引用捕获（v0.8 禁止），而闭包内只读不写——改为按值捕获（捕获点
+        // 即赋值后，值恒等），并保留 `$timerId = null;` 保证未启动计时器时变量已定义。
+        'vendor/workerman/coroutine/src/Barrier/Fiber.php' => [
+            '        $resumed = false;' . "\r\n"
+            . '        $timerId = null;' . "\r\n"
+            => '        $timerId = null;' . "\r\n",
+            'function() use ($coroutine, &$resumed, &$timerId) {'
+            => 'function() use ($coroutine, &$resumed, $timerId) {',
+        ],
+        // Channel/Fiber 的 push()/pop()：&$timedOut 无外层赋值，删除初始化即为
+        // REF 槽；$timerId 无引用捕获、且需保证条件赋值路径上已定义，保留 null 初始化。
+        'vendor/workerman/coroutine/src/Channel/Fiber.php' => [
+            '            $timedOut = false;' . "\r\n"
+            . '            $timerId = null;' . "\r\n"
+            => '            $timerId = null;' . "\r\n",
+        ],
+    ];
+
+    /**
+     * switch 终结补丁的字面替换规则：源文件 => [搜索串 => 替换串]。
+     * 搜索串为 vendor 源码中的精确字面量；未匹配时静默跳过（版本差异容忍）。
+     */
+    protected const SWITCH_TERMINAL_REPLACEMENTS = [
+        'vendor/workerman/webman-framework/src/App.php' => [
+            // getReflector() 同一变量 `$reflector` 在两个分支分别 new ReflectionFunction /
+            // ReflectionMethod，TypePHP 的类型化对象局部变量禁止跨类重赋值。改为分支内
+            // 独立变量 + 提前 return，缓存写入逻辑随分支各带一份，语义不变。
+            '        if ($call instanceof Closure || is_string($call)) {' . "\n"
+            . '            $reflector = new ReflectionFunction($call);' . "\n"
+            . '        } else {' . "\n"
+            . '            $reflector = new ReflectionMethod($call[0], $call[1]);' . "\n"
+            . '        }' . "\n"
+            . "\n"
+            . '        if ($cacheKey !== null) {' . "\n"
+            . '            static::$reflectorCache[$cacheKey] = $reflector;' . "\n"
+            . '            if (count(static::$reflectorCache) > 1024) {' . "\n"
+            . '                unset(static::$reflectorCache[key(static::$reflectorCache)]);' . "\n"
+            . '            }' . "\n"
+            . '        }' . "\n"
+            . "\n"
+            . '        return $reflector;'
+            => '        if ($call instanceof Closure || is_string($call)) {' . "\n"
+                . '            $reflectorFunction = new ReflectionFunction($call);' . "\n"
+                . '            if ($cacheKey !== null) {' . "\n"
+                . '                static::$reflectorCache[$cacheKey] = $reflectorFunction;' . "\n"
+                . '                if (count(static::$reflectorCache) > 1024) {' . "\n"
+                . '                    unset(static::$reflectorCache[key(static::$reflectorCache)]);' . "\n"
+                . '                }' . "\n"
+                . '            }' . "\n"
+                . '            return $reflectorFunction;' . "\n"
+                . '        }' . "\n"
+                . "\n"
+                . '        $reflectorMethod = new ReflectionMethod($call[0], $call[1]);' . "\n"
+                . '        if ($cacheKey !== null) {' . "\n"
+                . '            static::$reflectorCache[$cacheKey] = $reflectorMethod;' . "\n"
+                . '            if (count(static::$reflectorCache) > 1024) {' . "\n"
+                . '                unset(static::$reflectorCache[key(static::$reflectorCache)]);' . "\n"
+                . '            }' . "\n"
+                . '        }' . "\n"
+                . '        return $reflectorMethod;',
+            '                if (!method_exists($data, \'__toString\')) {'
+            . "\n"
+            . '                    return \'Object\';'
+            . "\n"
+            . '                }'
+            . "\n"
+            . '            default:'
+            => '                if (!method_exists($data, \'__toString\')) {'
+                . "\n"
+                . '                    return \'Object\';'
+                . "\n"
+                . '                }'
+                . "\n"
+                . '                return (string)$data;'
+                . "\n"
+                . '            default:',
+        ],
+        'vendor/monolog/monolog/src/Monolog/Utils.php' => [
+            '                $msg = \'Unknown error\';'
+            . "\n"
+            . '        }'
+            => '                $msg = \'Unknown error\';'
+                . "\n"
+                . '                break;'
+                . "\n"
+                . '        }',
+            '            case \'g\':'
+            . "\n"
+            . '                $val *= 1024;'
+            . "\n"
+            . '            case \'m\':'
+            . "\n"
+            . '                $val *= 1024;'
+            . "\n"
+            . '            case \'k\':'
+            . "\n"
+            . '                $val *= 1024;'
+            . "\n"
+            . '        }'
+            => '            case \'g\':'
+                . "\n"
+                . '                $val *= 1024;'
+                . "\n"
+                . '                $val *= 1024;'
+                . "\n"
+                . '                $val *= 1024;'
+                . "\n"
+                . '                break;'
+                . "\n"
+                . '            case \'m\':'
+                . "\n"
+                . '                $val *= 1024;'
+                . "\n"
+                . '                $val *= 1024;'
+                . "\n"
+                . '                break;'
+                . "\n"
+                . '            case \'k\':'
+                . "\n"
+                . '                $val *= 1024;'
+                . "\n"
+                . '                break;'
+                . "\n"
+                . '        }',
+        ],
+    ];
+
+    /**
      * 可变参数闭包补丁的字面替换规则：源文件 => [搜索串 => 替换串]。
      * 搜索串为 vendor 源码中的精确字面量；未匹配时静默跳过（版本差异容忍）。
      */
@@ -112,6 +337,16 @@ class ProjectGenerator
             // fclose 必抛 TypeError 令守护进程崩溃。日志重定向不依赖关闭它们——其下 fopen(stdoutFile)
             // 已把 outputStream 重指向目标文件，故整段删除关闭段（保留一个空行）。
             self::RESET_STD_STREAM_CLOSE_BLOCK => "\n",
+            // parseCommand 的 `case 'status'` 以 while(1) 死循环结尾后落空到 `case 'connections'`，
+            // 编译器要求 case 以终结语句收尾。循环仅经内部 exit(0) 退出，落空本为不可达死代码，
+            // 补一个不可达的 exit(0) 即满足约束且不改变行为。
+            '                    static::safeEcho("\nPress Ctrl+C to quit.\n\n");' . "\n"
+            . '                }' . "\n"
+            . '            case \'connections\':'
+            => '                    static::safeEcho("\nPress Ctrl+C to quit.\n\n");' . "\n"
+                . '                }' . "\n"
+                . '                exit(0);' . "\n"
+                . '            case \'connections\':',
         ],
         'vendor/workerman/workerman/src/Connection/TcpConnection.php' => [
             'set_error_handler(static function (int $code, string $msg): bool {' => 'set_error_handler(static function (int $code, string $msg, ...$__err): bool {',
@@ -223,8 +458,60 @@ class ProjectGenerator
             if (!is_dir($directory) && !mkdir($directory, 0777, true) && !is_dir($directory)) {
                 throw new \RuntimeException('Unable to create the TypePHP build directory: ' . $directory);
             }
-            if (file_put_contents($targetFile, $this->patchUninitializedScalarStatics($content)) === false) {
+            if (file_put_contents($targetFile, $this->stripStrayBootstrapCalls($this->patchUninitializedScalarStatics($content))) === false) {
                 throw new \RuntimeException('Unable to write the AOT static-patch source: ' . $targetFile);
+            }
+            $generated[] = $targetRel;
+        }
+        return $generated;
+    }
+
+    /**
+     * 删除文件末尾顶层的 `Class::init*();` 引导调用
+     *
+     * 仅匹配类结束大括号之后、文件末尾的调用语句（含紧邻的 `// Init ...`
+     * 注释行），方法体内部的 init 调用不受影响。main.php 桩会在启动时按
+     * 相同语义调用这些方法，剥离后运行时行为不变。
+     */
+    protected function stripStrayBootstrapCalls(string $content): string
+    {
+        return (string) preg_replace(
+            '/\n(?:[ \t]*\/\/[^\n]*\n[ \t]*)?[ \t]*(?:Session|FileSessionHandler|Fiber|Coroutine|Context)::(?:initContext|initDriver|init)\(\);\s*$/D',
+            "\n",
+            $content,
+        );
+    }
+
+    /**
+     * 为含顶层引导调用的源文件生成剥离后的 AOT 专用版本
+     *
+     * 读取项目实际安装的 workerman 源文件（Http/Session、FileSessionHandler、
+     * coroutine 的 Fiber/Context/Coroutine 等），删除类声明之后顶层的
+     * `Class::init*();` 引导调用后写入打包工作区。返回生成的补丁文件相对
+     * 路径列表（不含未安装的源）。
+     *
+     * @return list<string>
+     */
+    public function generateStrayBootstrapSources(): array
+    {
+        $generated = [];
+        foreach (self::STRAY_BOOTSTRAP_SOURCES as $sourceRel => $targetRel) {
+            $sourceFile = $this->basePath . '/' . $sourceRel;
+            if (!is_file($sourceFile)) {
+                continue;
+            }
+            $content = file_get_contents($sourceFile);
+            if ($content === false) {
+                throw new \RuntimeException('Unable to read the stray-bootstrap source file: ' . $sourceFile);
+            }
+
+            $targetFile = $this->basePath . '/' . $targetRel;
+            $directory = dirname($targetFile);
+            if (!is_dir($directory) && !mkdir($directory, 0777, true) && !is_dir($directory)) {
+                throw new \RuntimeException('Unable to create the TypePHP build directory: ' . $directory);
+            }
+            if (file_put_contents($targetFile, $this->stripStrayBootstrapCalls($content)) === false) {
+                throw new \RuntimeException('Unable to write the AOT stray-bootstrap source: ' . $targetFile);
             }
             $generated[] = $targetRel;
         }
@@ -289,6 +576,98 @@ class ProjectGenerator
     protected function patchVariadicHandlers(string $sourceRel, string $content): string
     {
         foreach (self::VARIADIC_HANDLER_REPLACEMENTS[$sourceRel] ?? [] as $search => $replacement) {
+            $content = str_replace($search, $replacement, $content);
+        }
+        return $content;
+    }
+
+    /**
+     * 为含类型化引用捕获的源文件生成补丁后的 AOT 专用版本
+     *
+     * 读取项目实际安装的源文件（webman Route.php、协程 Barrier/Channel Fiber），
+     * 按 REF_CAPTURE_REPLACEMENTS 把“先初始化再按引用捕获”改写为捕获未初始化
+     * 变量后写入打包工作区。返回生成的补丁文件相对路径列表（不含未安装的源）。
+     *
+     * @return list<string>
+     */
+    public function generateRefCaptureSources(): array
+    {
+        $generated = [];
+        foreach (self::REF_CAPTURE_SOURCES as $sourceRel => $targetRel) {
+            $sourceFile = $this->basePath . '/' . $sourceRel;
+            if (!is_file($sourceFile)) {
+                continue;
+            }
+            $content = file_get_contents($sourceFile);
+            if ($content === false) {
+                throw new \RuntimeException('Unable to read the ref-capture source file: ' . $sourceFile);
+            }
+
+            $targetFile = $this->basePath . '/' . $targetRel;
+            $directory = dirname($targetFile);
+            if (!is_dir($directory) && !mkdir($directory, 0777, true) && !is_dir($directory)) {
+                throw new \RuntimeException('Unable to create the TypePHP build directory: ' . $directory);
+            }
+            if (file_put_contents($targetFile, $this->patchRefCaptures($sourceRel, $content)) === false) {
+                throw new \RuntimeException('Unable to write the AOT ref-capture source: ' . $targetFile);
+            }
+            $generated[] = $targetRel;
+        }
+        return $generated;
+    }
+
+    /**
+     * 按字面规则把“先初始化再按引用捕获”改写为捕获未初始化变量
+     */
+    protected function patchRefCaptures(string $sourceRel, string $content): string
+    {
+        foreach (self::REF_CAPTURE_REPLACEMENTS[$sourceRel] ?? [] as $search => $replacement) {
+            $content = str_replace($search, $replacement, $content);
+        }
+        return $content;
+    }
+
+    /**
+     * 为含非终结 switch case 的源文件生成补丁后的 AOT 专用版本
+     *
+     * 读取项目实际安装的源文件（webman-framework App.php、monolog Utils.php），
+     * 按 SWITCH_TERMINAL_REPLACEMENTS 把落空 case 改写为终结形态后写入打包
+     * 工作区。返回生成的补丁文件相对路径列表（不含未安装的源）。
+     *
+     * @return list<string>
+     */
+    public function generateSwitchTerminalSources(): array
+    {
+        $generated = [];
+        foreach (self::SWITCH_TERMINAL_SOURCES as $sourceRel => $targetRel) {
+            $sourceFile = $this->basePath . '/' . $sourceRel;
+            if (!is_file($sourceFile)) {
+                continue;
+            }
+            $content = file_get_contents($sourceFile);
+            if ($content === false) {
+                throw new \RuntimeException('Unable to read the switch-terminal source file: ' . $sourceFile);
+            }
+
+            $targetFile = $this->basePath . '/' . $targetRel;
+            $directory = dirname($targetFile);
+            if (!is_dir($directory) && !mkdir($directory, 0777, true) && !is_dir($directory)) {
+                throw new \RuntimeException('Unable to create the TypePHP build directory: ' . $directory);
+            }
+            if (file_put_contents($targetFile, $this->patchSwitchTerminals($sourceRel, $content)) === false) {
+                throw new \RuntimeException('Unable to write the AOT switch-terminal source: ' . $targetFile);
+            }
+            $generated[] = $targetRel;
+        }
+        return $generated;
+    }
+
+    /**
+     * 按字面规则把落空 switch case 改写为终结形态
+     */
+    protected function patchSwitchTerminals(string $sourceRel, string $content): string
+    {
+        foreach (self::SWITCH_TERMINAL_REPLACEMENTS[$sourceRel] ?? [] as $search => $replacement) {
             $content = str_replace($search, $replacement, $content);
         }
         return $content;
@@ -639,7 +1018,25 @@ class ProjectGenerator
             $this->generateVariadicHandlerSources(),
             static fn(string $target): bool => !in_array($target, $sources, true),
         ));
-        $aotGeneratedTargets = [...$flattenedTargets, ...$patchedTargets, ...$variadicTargets];
+        // 生成 AOT 专用顶层引导调用剥离源（Http/Session、FileSessionHandler、
+        // coroutine Fiber/Coroutine），保证扫描期不再出现 stray code Fatal
+        $strayStrippedTargets = array_values(array_filter(
+            $this->generateStrayBootstrapSources(),
+            static fn(string $target): bool => !in_array($target, $sources, true),
+        ));
+        // 生成 AOT 专用 switch 终结补丁源（webman App、monolog Utils），保证
+        // 落空 case 不再触发 switch case must end with Fatal
+        $switchTerminalTargets = array_values(array_filter(
+            $this->generateSwitchTerminalSources(),
+            static fn(string $target): bool => !in_array($target, $sources, true),
+        ));
+        // 生成 AOT 专用类型化引用捕获补丁源（webman Route、协程 Barrier/Channel
+        // Fiber），保证按引用捕获不再触发 fixed type Fatal
+        $refCaptureTargets = array_values(array_filter(
+            $this->generateRefCaptureSources(),
+            static fn(string $target): bool => !in_array($target, $sources, true),
+        ));
+        $aotGeneratedTargets = [...$flattenedTargets, ...$patchedTargets, ...$variadicTargets, ...$strayStrippedTargets, ...$switchTerminalTargets, ...$refCaptureTargets];
         if ($aotGeneratedTargets !== []) {
             $position = array_search('main.php', $sources, true);
             if ($position === false) {
@@ -677,6 +1074,16 @@ class ProjectGenerator
             'vendor/workerman/coroutine/src/Context.php',
             'vendor/workerman/coroutine/src/WaitGroup.php',
             'vendor/workerman/coroutine/src/Barrier.php',
+            'vendor/workerman/workerman/src/Protocols/Http/Session.php',
+            'vendor/workerman/workerman/src/Protocols/Http/Session/FileSessionHandler.php',
+            'vendor/workerman/coroutine/src/Context/Fiber.php',
+            'vendor/workerman/coroutine/src/Coroutine/Fiber.php',
+            'vendor/workerman/coroutine/src/Coroutine.php',
+            'vendor/workerman/webman-framework/src/App.php',
+            'vendor/monolog/monolog/src/Monolog/Utils.php',
+            'vendor/workerman/webman-framework/src/Route/Route.php',
+            'vendor/workerman/coroutine/src/Barrier/Fiber.php',
+            'vendor/workerman/coroutine/src/Channel/Fiber.php',
             'vendor/workerman/workerman/src/Worker.php',
             'vendor/workerman/workerman/src/Connection/TcpConnection.php',
             'vendor/workerman/workerman/src/Connection/AsyncTcpConnection.php',
