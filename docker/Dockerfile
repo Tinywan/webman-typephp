@@ -10,6 +10,10 @@ COPY CompilerDiagnosticTrait.php /opt/typephp/vendor/swoole/typephp/src/Diagnost
 COPY gen_stub.php /opt/typephp/vendor/swoole/typephp/src/gen_stub.php
 COPY SwitchTrait.php /opt/typephp/vendor/swoole/typephp/src/Parser/SwitchTrait.php
 COPY CompilerBase.php /opt/typephp/vendor/swoole/typephp/src/CompilerBase.php
+COPY patch_native_type_compatibility_trait.php /tmp/patch_native_type_compatibility_trait.php
+RUN php /tmp/patch_native_type_compatibility_trait.php && rm /tmp/patch_native_type_compatibility_trait.php
+COPY patch_method_call_trait.php /tmp/patch_method_call_trait.php
+RUN php /tmp/patch_method_call_trait.php && rm /tmp/patch_method_call_trait.php
 COPY ArrayExpressionTrait.php /opt/typephp/vendor/swoole/typephp/src/Parser/ArrayExpressionTrait.php
 COPY FuncCallOptimizer.php /opt/typephp/vendor/swoole/typephp/src/Optimizer/FuncCallOptimizer.php
 COPY AssignOpTrait.php /opt/typephp/vendor/swoole/typephp/src/Parser/AssignOpTrait.php

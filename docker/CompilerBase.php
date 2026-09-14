@@ -153,6 +153,83 @@ class CompilerBase implements PropertyAccessContext
     use LoopVarOptimizer;
     use SsaPropOptimizer;
 
+    /**
+     * Dynamic reference slots can contain Throwable objects. Defer their
+     * validation to throwValue(), just like ordinary dynamic variables.
+     */
+    protected function parseThrow(mixed $expr): string
+    {
+        if ($this->method === '__destruct') {
+            $this->warning($expr, "Throwing exception in {$this->getFullClassName()}::__destruct() may cause memory leak");
+        }
+        $class = $this->detectDeclaredClassOfExpr($expr->expr);
+        if ($this->isNativeObjectClass($class)) {
+            $this->fatalError($expr, 'Native objects cannot be thrown as Zend exceptions');
+        }
+        $type = $this->detectTypeOfExpr($expr->expr);
+        if ($this->isNewExpr($expr->expr)) {
+            $ex = $this->parseExpr($expr->expr);
+            return 'php::throwException(' . $ex . ')';
+        }
+        if ($this->isVarExpr($expr->expr)) {
+            $ex = $this->parseIdentifier($expr->expr);
+            if ($type === Type::OBJECT) {
+                return 'php::throwException(' . $ex . ')';
+            }
+        } else {
+            $ex = $this->parseExpr($expr->expr);
+        }
+        if (!in_array($type, [Type::VAR, Type::REF, Type::OBJECT], true) && $class === '') {
+            $this->fatalError($expr, 'Can only throw objects');
+        }
+        return 'php::throwValue(' . $ex . ')';
+    }
+
+    /**
+     * Parameterized toArray() methods on ordinary PHP classes are application
+     * APIs, not TypePHP conversion hooks (for example JsonResource::toArray(Request)).
+     */
+    protected function assertKeywordConversionMethodSignature(
+        NodeAbstract $node,
+        string $class,
+        string $method,
+        FunctionDef $function,
+        string $expectedType,
+        bool $nativeClass,
+    ): void {
+        $kind = $nativeClass ? 'Native conversion method' : 'Conversion method';
+        if ($function->argInfoList !== []) {
+            if (!$nativeClass && strtolower($method) === 'toarray') {
+                return;
+            }
+            $this->fatalError($node, "{$kind} `{$class}::{$method}()` must not accept arguments");
+        }
+        $hasExactReturnType = $function->returnType === $expectedType;
+        if ($expectedType === Type::VAR) {
+            $hasExactReturnType = in_array(strtolower($function->returnTypeStr), ['mixed', 'any'], true);
+        }
+        if ($function->returnsByRef || $function->returnNullable || !$hasExactReturnType) {
+            $expectedTypeName = match ($expectedType) {
+                Type::INT => 'int',
+                Type::FLOAT => 'float',
+                Type::STR => 'string',
+                Type::BOOL => 'bool',
+                Type::ARRAY => 'array',
+                Type::STREAM => 'Stream',
+                Type::BIGINT => 'BigInt',
+                Type::BIGFLOAT => 'BigFloat',
+                Type::DECIMAL => 'Decimal',
+                Type::OBJECT => 'object',
+                Type::VAR => 'mixed` or `any',
+                default => $expectedType,
+            };
+            $this->fatalError(
+                $node,
+                "{$kind} `{$class}::{$method}()` must return exactly `{$expectedTypeName}`",
+            );
+        }
+    }
+
     public const string DEFAULT_PHP_VERSION = '8.5';
     protected const string NATIVE_PROPERTY_VALUE_VAR = 'var';
     protected const string NATIVE_PROPERTY_VALUE_DYNAMIC = 'dynamic';
@@ -490,7 +567,7 @@ class CompilerBase implements PropertyAccessContext
     protected array $nativeClassDeclarations = [];
     /** @var array<string, true> Request-reset initialization flags for Native static locals. */
     protected array $nativeStaticInitializers = [];
-    protected bool $nativeTypes = false;
+    protected bool $varIntTypes = false;
     protected bool $decimalTypes = false;
     protected bool $bigintTypes = false;
     protected string $rootPath;
@@ -997,7 +1074,7 @@ class CompilerBase implements PropertyAccessContext
         return $this->getPlatform()->removeCommonPrefix($short, $long);
     }
 
-    protected function getVarType(string $name): string
+    protected function getRawVarType(string $name): string
     {
         if ($this->hasLocalVar($name)) {
             return $this->context->localVars[$name];
@@ -1007,6 +1084,16 @@ class CompilerBase implements PropertyAccessContext
         }
 
         return Type::VAR;
+    }
+
+    /**
+     * Return the value type visible to expressions. A native C++ reference has
+     * the same operators and assignment rules as its referenced value; only
+     * ABI/binding code should inspect getRawVarType().
+     */
+    protected function getVarType(string $name): string
+    {
+        return Type::getReferencedType($this->getRawVarType($name));
     }
 
     /**
@@ -1071,7 +1158,7 @@ class CompilerBase implements PropertyAccessContext
     protected function resetFile(): void
     {
         $this->indentLevel = 0;
-        $this->nativeTypes = false;
+        $this->varIntTypes = false;
         $this->decimalTypes = false;
         $this->bigintTypes = false;
         $this->classesDefineInFile = [];
@@ -1346,6 +1433,21 @@ class CompilerBase implements PropertyAccessContext
         $this->assertCompilerPhase(self::PHASE_CONVERT, 'function call cache ID allocation');
         $id = $this->functionCallCacheIndex++;
         return 'typephp_get_function_call_cache(FunctionCallCacheId{' . $id . '})';
+    }
+
+    /** Return the function-local late-static-bound class entry. */
+    protected function getCalledCeExpr(): string
+    {
+        $this->context->needsCalledCe = true;
+        return '_typephp_called_ce';
+    }
+
+    /** Return the function-local late-static-bound class name. */
+    protected function getCalledClassExpr(): string
+    {
+        $this->context->needsCalledCe = true;
+        $this->context->needsCalledClass = true;
+        return '_typephp_called_class';
     }
 
     protected function getClassEntryPtr(string $className): string
@@ -2499,9 +2601,9 @@ class CompilerBase implements PropertyAccessContext
         // runtime overflow promotes the result to float. Keep the Variant
         // representation through the return boundary so a declared scalar
         // return type observes and rejects that float exactly as PHP does.
-        // `use native_types` intentionally opts into native C++ arithmetic
+        // `use varint_types` intentionally opts into native C++ arithmetic
         // semantics and is therefore excluded from this check.
-        if (!$this->nativeTypes && $type === Type::INT && $this->exprCanOverflowInt($v->expr)) {
+        if ($this->varIntTypes && $type === Type::INT && $this->exprCanOverflowInt($v->expr)) {
             $type = Type::VAR;
         }
         $nativeExpressionClass = $this->detectClassOfExpr($v->expr);
@@ -2831,9 +2933,21 @@ class CompilerBase implements PropertyAccessContext
                 }
                 if (!$this->hasClass($classDef->extends)) {
                     if ($classDef->inheritedFromInternalClass) {
-                        if (!Reflection::hasMethod($classDef->extends, $method) and !Reflection::hasMethod($classDef->extends, $method . '__call')) {
+                        $lateStaticCall = $expr instanceof Expr\StaticCall
+                            && $this->isNameExpr($expr->class)
+                            && strtolower($expr->class->toString()) === 'static';
+                        if ($lateStaticCall && !$this->isCurrentClassFinal()) {
+                            return false;
+                        }
+                        $magicMethod = $expr instanceof Expr\StaticCall ? '__callStatic' : '__call';
+                        if ($classDef->hasMethod($magicMethod)) {
+                            return false;
+                        }
+                        if (!Reflection::hasMethod($classDef->extends, $method)
+                            && !Reflection::hasMethod($classDef->extends, $magicMethod)
+                        ) {
                             $this->fatalError($expr, 'Class `' . $classDef->getNamespacedName() . '` inherits from a internal class, but the class `' .
-                                $classDef->extends . '` does not have a `' . $method . '` method or a `__call` magic method');
+                                $classDef->extends . '` does not have a `' . $method . '` method or a `' . $magicMethod . '` magic method');
                         } else {
                             $this->climate->cyan('Dynamically calling internal class method `' . $classDef->extends . '::' . $method . '()`');
                             throw new DynamicCall();
@@ -3015,7 +3129,7 @@ class CompilerBase implements PropertyAccessContext
             case 'Expr_UnaryPlus':
                 $innerType = $this->detectTypeOfExpr($expr->expr);
                 if (
-                    !$this->nativeTypes
+                    $this->varIntTypes
                     && $exprType === 'Expr_UnaryMinus'
                     && $innerType === Type::INT
                     && $this->constantIntValue($expr->expr) === PHP_INT_MIN
@@ -3103,7 +3217,7 @@ class CompilerBase implements PropertyAccessContext
                 if ($leftType === Type::FLOAT || $rightType === Type::FLOAT) {
                     return Type::FLOAT;
                 }
-                if (!$this->nativeTypes && $leftType === Type::INT && $rightType === Type::INT) {
+                if ($this->varIntTypes && $leftType === Type::INT && $rightType === Type::INT) {
                     $op = match ($exprType) {
                         'Expr_BinaryOp_Plus' => '+',
                         'Expr_BinaryOp_Minus' => '-',
@@ -3936,7 +4050,7 @@ class CompilerBase implements PropertyAccessContext
                     if ($this->classDef?->nativeObject) {
                         $this->fatalError($expr, 'Native classes do not support `new static()`');
                     }
-                    $cePtr = Symbol::getCalledCe();
+                    $cePtr = $this->getCalledCeExpr();
                 } else {
                     if ($className === 'self') {
                         $className = $this->getFullClassName();
@@ -4134,7 +4248,7 @@ class CompilerBase implements PropertyAccessContext
             if (!$this->classDef) {
                 $this->fatalError($class, 'Cannot use "static" outside a class');
             }
-            return Symbol::getCalledCe();
+            return $this->getCalledCeExpr();
         } else {
             $className = $this->getNamespacedClassName($className);
         }
@@ -5217,6 +5331,16 @@ class CompilerBase implements PropertyAccessContext
     protected function genScopeVarDecl(): string
     {
         $code = '';
+        if ($this->context->needsCalledCe) {
+            $code .= $this->getIndent()
+                . 'zend_class_entry *const _typephp_called_ce = typephp_get_called_ce(this_);'
+                . PHP_EOL;
+        }
+        if ($this->context->needsCalledClass) {
+            $code .= $this->getIndent()
+                . 'php::Str const _typephp_called_class = typephp_get_called_class(_typephp_called_ce);'
+                . PHP_EOL;
+        }
         if ($this->context->hasMultiLevelBreak) {
             $code .= $this->getIndent() . 'int _brk_flag = 0;' . PHP_EOL;
         }
@@ -5276,13 +5400,11 @@ class CompilerBase implements PropertyAccessContext
                 $code .= $this->getIndent() . $info['type'] . ' &' . $name . ' = ' . $zvalMacro . '(' . $info['getter'] . '.unwrap_ptr());' . PHP_EOL;
             }
         }
-        foreach ($this->context->staticPropRefs as $name => $info) {
-            $getter = Symbol::getStaticProperty() . '(' . $info['classPtr'] . ', ' . $info['offsetExpr'] . ')';
-            if (($info['kind'] ?? 'zval') === 'var') {
-                $code .= $this->getIndent() . Type::VAR . ' ' . $name . ' = ' . $getter . ';' . PHP_EOL;
-            } else {
-                $code .= $this->getIndent() . 'zval *' . $name . ' = ' . $getter . '.unwrap_ptr();' . PHP_EOL;
-            }
+        foreach ($this->context->staticPropRefs as $info) {
+            $code .= $this->getIndent() . 'zval *' . $info['name'] . ' = nullptr;' . PHP_EOL;
+            $code .= $this->getIndent() . 'const auto ' . $info['accessorName'] . ' = [&]() {'
+                . ' return typephp_get_static_property_cached(' . $info['name'] . ', [&]() {'
+                . ' return ' . $info['resolver'] . '; }); };' . PHP_EOL;
         }
         return $code;
     }

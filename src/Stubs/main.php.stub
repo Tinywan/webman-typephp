@@ -36,6 +36,37 @@ function main(): void
         require_once base_path() . '/app/functions.php';
     }
     \support\App::loadAllConfig(['route']);
+    foreach (config('autoload.files', []) as $file) {
+        if (is_file($file)) {
+            include_once $file;
+        }
+    }
+    foreach (config('plugin', []) as $projects) {
+        if (!is_array($projects)) {
+            continue;
+        }
+        foreach ($projects as $project) {
+            if (!is_array($project)) {
+                continue;
+            }
+            foreach ($project['autoload']['files'] ?? [] as $file) {
+                if (is_file($file)) {
+                    include_once $file;
+                }
+            }
+        }
+        foreach ($projects['autoload']['files'] ?? [] as $file) {
+            if (is_file($file)) {
+                include_once $file;
+            }
+        }
+    }
+    if (class_exists(\Webman\Database\Initializer::class)) {
+        \Webman\Database\Initializer::init(config('database', []));
+    }
+    if (class_exists(\Webman\ThinkOrm\Initializer::class)) {
+        \Webman\ThinkOrm\Initializer::init();
+    }
 
     $errorReporting = config('app.error_reporting');
     if (isset($errorReporting)) {
@@ -62,7 +93,21 @@ function main(): void
     // 4. 加载中间件与路由表
     \Webman\Middleware::load(config('middleware', []));
     \Webman\Middleware::load(['__static__' => config('static.middleware', [])]);
-    \Webman\Route::load([config_path()]);
+    foreach (config('plugin', []) as $pluginName => $pluginConfig) {
+        if (!is_array($pluginConfig)) {
+            continue;
+        }
+        \Webman\Middleware::load($pluginConfig['middleware'] ?? [], (string) $pluginName);
+        \Webman\Middleware::load(
+            ['__static__' => $pluginConfig['static']['middleware'] ?? []],
+            (string) $pluginName,
+        );
+    }
+    $routePaths = [config_path()];
+    foreach (glob(base_path() . '/plugin/*/config', GLOB_ONLYDIR) ?: [] as $pluginConfigPath) {
+        $routePaths[] = $pluginConfigPath;
+    }
+    \Webman\Route::load($routePaths);
 
     // 5. 启动 Webman HTTP 进程
     $process = config('process', []);

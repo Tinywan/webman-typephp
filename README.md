@@ -58,6 +58,9 @@ php webman typephp:doctor
 # 默认输出到 dist/
 php webman typephp:package
 
+# SaiAdmin：自动发现核心、app、support 与已安装插件服务端业务代码
+php webman typephp:package --profile=saiadmin
+
 # dist/ 已存在时，显式确认覆盖
 php webman typephp:package --force
 
@@ -66,6 +69,9 @@ php webman typephp:package --refresh-main
 ```
 
 默认 builder 为 `tinywan/typephp-webman-builder:v0.1.3`。编译在 Docker 中完成，宿主机不需要 C++、Clang 或 TypePHP 编译器。
+
+SaiAdmin 的支持矩阵、开发规范、存量迁移、配置样例和验收脚本见
+[`docs/saiadmin-aot/`](docs/saiadmin-aot/README.md)。
 
 ### 4. 启动产物
 
@@ -106,6 +112,7 @@ dist/
 ├── lib/                    # 随包发布的底层系统与扩展动态依赖库 (ldd 完整收集)
 ├── runtime/                # 运行时缓存与日志目录 (logs, views)
 ├── build-manifest.json     # 输入、镜像与时间等构建元数据
+├── source-coverage.json    # SaiAdmin profile 的逐业务文件 AOT 覆盖清单
 ├── config/                 # 项目运行时配置（若存在）
 ├── public/                 # 静态资源（若存在）
 └── app/view/               # 视图模板（若存在）
@@ -118,6 +125,7 @@ dist/
 | 命令 | 说明 |
 | --- | --- |
 | `php webman typephp:package` | 使用默认 builder 构建 Linux portable-dir |
+| `php webman typephp:package --profile=saiadmin` | 使用锁版本、失败关闭的 SaiAdmin 自动发现与兼容规则构建 |
 | `php webman typephp:package --force` | 覆盖已有输出，并保留旧目录备份 |
 | `php webman typephp:package --refresh-main` | 强制从最新官方 stub 刷新 `main.php`（旧文件自动备份） |
 | `php webman typephp:package --image=...` | 使用指定且经过验证的 Docker 镜像 |
@@ -144,6 +152,12 @@ return [
 ```
 
 `--image` 的优先级最高；未指定时使用上述 `docker.image`，配置缺失时才回退至 `tinywan/typephp-webman-builder:v0.1.3`。
+
+### SaiAdmin profile
+
+`--profile=saiadmin` 要求存在 `plugin/saiadmin` 和有效的 `composer.lock`。当前首个支持矩阵固定为 SaiAdmin `6.1.1`、ThinkORM `v3.0.34`、Carbon `3.13.2`；未知版本会在进入 Docker 编译前失败。
+
+profile 会自动发现根 `app/`、`support/`、SaiAdmin 核心和每个 `plugin/*/app/`，并编译完整 Composer 依赖树。兼容副本只写入 `.typephp/build/`，普通 PHP 源码不变。构建输出中的 `source-coverage.json` 逐项记录业务 PHP 是直接编译还是由哪个 AOT 副本替代；业务文件未分类、被排除却没有等价副本，或漂移到未知依赖版本时都会终止构建。
 
 ## 🎯 可信 MVP 边界
 

@@ -31,6 +31,13 @@ class PackageCommand extends Command
             ->setDescription('Build Webman project into a Linux x86_64 portable-dir using TypePHP Docker builder')
             ->addOption('image', null, InputOption::VALUE_REQUIRED, 'Docker builder image reference', null)
             ->addOption(
+                'profile',
+                null,
+                InputOption::VALUE_REQUIRED,
+                'Optional compatibility profile (supported: saiadmin)',
+                null,
+            )
+            ->addOption(
                 'output-dir',
                 null,
                 InputOption::VALUE_REQUIRED,
@@ -67,6 +74,13 @@ class PackageCommand extends Command
         $outputDir = trim((string) $input->getOption('output-dir'), '/\\');
         $outputName = (string) $input->getOption('output-name');
         $force = (bool) $input->getOption('force');
+        $profile = $input->getOption('profile');
+        $jobs = $pluginConfig['build']['jobs'] ?? 4;
+
+        if (!is_int($jobs) || $jobs < 1 || $jobs > 4) {
+            $output->writeln('<error>[ERROR] build.jobs must be an integer between 1 and 4.</error>');
+            return Command::FAILURE;
+        }
 
         // 1. 严格参数校验，防止任何路径穿越或格式错误
         if (!preg_match('/^[A-Za-z0-9._-]+$/', $outputName)) {
@@ -107,7 +121,14 @@ class PackageCommand extends Command
             return Command::FAILURE;
         }
 
-        // 3. 检查 Docker 环境
+        // 3. 执行与 doctor 相同的强制环境门禁；不允许用源码改写掩盖宿主环境问题。
+        if (version_compare(PHP_VERSION, '8.4', '<') || version_compare(PHP_VERSION, '8.6', '>=')) {
+            $output->writeln(
+                '<error>[ERROR] Environment check failed: PHP >= 8.4 and < 8.6 is required. Run typephp:doctor.</error>',
+            );
+            return Command::FAILURE;
+        }
+
         $dockerCheck = new Process(['docker', '--version']);
         $dockerCheck->run();
         if (!$dockerCheck->isSuccessful()) {
@@ -141,6 +162,7 @@ class PackageCommand extends Command
 
             // 动态合并配置并生成 project.linux.yml
             $extraConfig = [
+                'profile' => is_string($profile) && $profile !== '' ? $profile : null,
                 'build' => [
                     'output_name' => $outputName,
                 ],
@@ -158,7 +180,7 @@ class PackageCommand extends Command
 
         // 汇总各类 AOT 生成源的输入摘要：标签用于终端提示，同名 <label>_hashes 键写入 manifest
         $generatedSourceGroups = [
-            'flattened' => ProjectGenerator::GUARDED_SOURCES,
+            'flattened' => array_merge(ProjectGenerator::GUARDED_SOURCES, $generator->discoverProjectGuardedSources()),
             'nullable-static' => ProjectGenerator::NULLABLE_STATIC_SOURCES,
             'stray-bootstrap' => ProjectGenerator::STRAY_BOOTSTRAP_SOURCES,
             'variadic-handler' => ProjectGenerator::VARIADIC_HANDLER_SOURCES,
@@ -179,10 +201,20 @@ class PackageCommand extends Command
             'builder_image' => $image,
             'output_name' => $outputName,
             'output_dir' => $outputDir,
+            'profile' => is_string($profile) && $profile !== '' ? $profile : null,
             'built_at' => gmdate('Y-m-d\TH:i:s\Z'),
+            'runtime_resources' => is_file($stageBuildDir . '/runtime-resources.list')
+                ? file($stageBuildDir . '/runtime-resources.list', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES)
+                : [],
             'inputs' => [
                 'main_hash' => file_exists($basePath . '/main.php') ? sha1_file($basePath . '/main.php') : '',
                 'config_hash' => sha1_file($projectYmlPath),
+                'runtime_resources_hash' => is_file($stageBuildDir . '/runtime-resources.list')
+                    ? sha1_file($stageBuildDir . '/runtime-resources.list')
+                    : '',
+                'source_coverage_hash' => is_file($stageBuildDir . '/source-coverage.json')
+                    ? sha1_file($stageBuildDir . '/source-coverage.json')
+                    : '',
                 ...$generatedHashes,
             ],
         ];
@@ -210,6 +242,8 @@ class PackageCommand extends Command
             'TYPEPHP_OUTPUT_NAME=' . $outputName,
             '-e',
             'TYPEPHP_FORCE=' . ($force ? '1' : '0'),
+            '-e',
+            'TYPEPHP_JOBS=' . $jobs,
             $image,
         ];
 

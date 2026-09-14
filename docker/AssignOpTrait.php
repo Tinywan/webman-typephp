@@ -287,20 +287,18 @@ trait AssignOpTrait
                 continue;
             }
             if ($item instanceof ArrayItem) {
-                $key = $item->key ? $this->parseArrayKey($item->key) : (string) $k;
+                $value = new Expr\ArrayDimFetch(
+                    new Variable($tmpVar),
+                    $item->key ?? new Node\Scalar\Int_($k),
+                );
                 if ($item->value instanceof Expr\List_) {
-                    $nestedTmp = $this->genTmpVarName();
-                    $this->addLocalVar($nestedTmp, Type::ARRAY);
-                    $code .= $this->getIndent() . "{$nestedTmp} = {$tmpVar}.item({$key});" . PHP_EOL;
                     $code .= $this->getIndent()
-                        . $this->parseAssignToList($item->value, new Variable($nestedTmp))
+                        . $this->parseAssignToList($item->value, $value)
                         . PHP_EOL;
                 } else {
-                    $var = $this->parseWritableIdentifier($item->value);
-                    if ($this->isVarExpr($item->value) and !$this->hasVar($var)) {
-                        $this->addLocalVar($var, Type::VAR);
-                    }
-                    $code .= $this->getIndent() . "{$var} = {$tmpVar}.item({$key});" . PHP_EOL;
+                    $code .= $this->getIndent()
+                        . $this->parseAssignFinally($item->value, $value)
+                        . ';' . PHP_EOL;
                 }
             } else {
                 $this->unsupportedSyntax($item);
@@ -885,7 +883,7 @@ trait AssignOpTrait
             return $pythonOperator;
         }
         $propertyWriteTarget = $this->preparePropertyWriteTarget($node->var);
-        $this->guardLiteralDivisionByZero($node->expr, $op);
+        $this->guardLiteralDivisionByZero($node->var, $node->expr, $op);
 
         // A compound division/modulo on a NATIVE scalar slot with a proven
         // zero divisor cannot fall through to the raw C++ operator (SIGFPE
@@ -894,7 +892,7 @@ trait AssignOpTrait
         // lower the whole expression to the PHP-semantics binary operation
         // and leave the target untouched.
         if (($op === '/=' || $op === '%=')
-            && !$this->nativeTypes
+            && $this->varIntTypes
             && $this->isZeroLiteral($node->expr)
             && $this->isVarExpr($node->var)
             && $this->hasVar((string) $this->parseIdentifier($node->var))
@@ -903,7 +901,7 @@ trait AssignOpTrait
             // std::int()/std::float() values are an explicit opt-in to native
             // C++ arithmetic; changing them to PHP semantics here would be as
             // wrong as the undefined raw operation. Keep the compile-time
-            // rejection native_types mode uses.
+            // rejection varint_types mode uses.
             if ($this->isExplicitNativeArithmeticExpr($node->var)) {
                 $this->fatalError($node->expr, 'Cannot divide or modulo by zero');
             }
@@ -1201,7 +1199,7 @@ trait AssignOpTrait
         // A direct zend_long reference would bypass that behavior completely.
         // Native objects cannot cross the Variant boundary and retain their
         // native C++ property access path.
-        if (!$this->nativeTypes
+        if ($this->varIntTypes
             && $def->type === Type::INT
             && !$this->isNativeObjectClass($this->detectClassOfExpr($node->var->var))
             && in_array($op, ['+=', '-=', '*=', '/=', '%=', '**=', '<<=', '>>=', '&=', '|=', '^='], true)
