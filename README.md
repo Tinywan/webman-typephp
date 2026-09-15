@@ -70,7 +70,7 @@ php webman typephp:package --refresh-main
 
 默认 builder 为 `tinywan/typephp-webman-builder:v0.1.3`。编译在 Docker 中完成，宿主机不需要 C++、Clang 或 TypePHP 编译器。
 
-SaiAdmin 的支持矩阵、开发规范、存量迁移、配置样例和验收脚本见
+SaiAdmin 的支持矩阵、开发规范、存量迁移、配置样例、验收脚本和实跑证据见
 [`docs/saiadmin-aot/`](docs/saiadmin-aot/README.md)。
 
 ### 4. 启动产物

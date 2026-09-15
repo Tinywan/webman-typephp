@@ -11,6 +11,9 @@
 5. 用 `scripts/verify-package.sh` 检查产物契约。
 6. 仅在隔离环境中，用 `scripts/accept-linux.sh` 完成验证码、登录、用户信息和权限拒绝验收。
 
+本 PR 的 Linux amd64 完整编译、产物检查、启动和业务验收记录见
+[验证证据](docs/verification-evidence.md)。
+
 边界：
 
 - 业务 PHP 必须进入 AOT 编译，不得借 `ignore` 静默回退解释执行。
