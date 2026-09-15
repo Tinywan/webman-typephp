@@ -114,9 +114,13 @@ fi
 
 # Parallelize the C++ codegen/compile phase across available cores. job:1 makes
 # the ~371-file g++ phase take 40+ minutes (exceeding the command timeout);
-# cap at 8 to bound peak memory since each PHPX-template g++ job can be large.
-jobs="$(nproc 2>/dev/null || echo 2)"
-[[ "$jobs" -gt 8 ]] && jobs=8
+# cap at 4 to bound peak memory since each PHPX-template g++ job can be large.
+jobs="${TYPEPHP_JOBS:-$(nproc 2>/dev/null || echo 2)}"
+if [[ ! "$jobs" =~ ^[1-9][0-9]*$ ]]; then
+    echo '[ERROR] TYPEPHP_JOBS must be a positive integer.' >&2
+    exit 2
+fi
+[[ "$jobs" -gt 4 ]] && jobs=4
 [[ "$jobs" -lt 1 ]] && jobs=1
 sed -i "s/^job:.*/job: ${jobs}/" "$project_file"
 
@@ -279,8 +283,26 @@ for resource in config public; do
 done
 mkdir -p "$stage_dir/runtime/logs" "$stage_dir/runtime/views"
 if [[ -d app/view ]]; then mkdir -p "$stage_dir/app"; cp -a app/view "$stage_dir/app/"; fi
-if [[ -f app/functions.php ]]; then copy_file app/functions.php "$stage_dir/app/functions.php"; fi
+if [[ -f app/functions.php && ! -f "$build_dir/source-coverage.json" ]]; then
+    copy_file app/functions.php "$stage_dir/app/functions.php"
+fi
+runtime_resources_file="$build_dir/runtime-resources.list"
+if [[ -f "$runtime_resources_file" ]]; then
+    while IFS= read -r resource || [[ -n "$resource" ]]; do
+        [[ -z "$resource" ]] && continue
+        if ! validate_relative_path "$resource"; then
+            echo "[ERROR] Unsafe runtime resource path in manifest: $resource" >&2
+            exit 2
+        fi
+        if [[ -e "$workspace/$resource" ]]; then
+            mkdir -p "$stage_dir/$(dirname -- "$resource")"
+            cp -a "$workspace/$resource" "$stage_dir/$resource"
+        fi
+    done < "$runtime_resources_file"
+    copy_file "$runtime_resources_file" "$stage_dir/runtime-resources.list"
+fi
 [[ -f "$build_dir/build-manifest.json" ]] && copy_file "$build_dir/build-manifest.json" "$stage_dir/build-manifest.json"
+[[ -f "$build_dir/source-coverage.json" ]] && copy_file "$build_dir/source-coverage.json" "$stage_dir/source-coverage.json"
 
 readonly final_dir="$real_workspace/$output_dir"
 if [[ -e "$final_dir" ]]; then
@@ -288,6 +310,7 @@ if [[ -e "$final_dir" ]]; then
         echo "[ERROR] Output '$output_dir' exists; use --force to replace it." >&2
         exit 1
     fi
+    mkdir -p "$real_workspace/.typephp"
     mv "$final_dir" "$real_workspace/.typephp/previous-$build_id"
 fi
 # stage_dir is on native storage while final_dir is on the 9P bind mount, so this

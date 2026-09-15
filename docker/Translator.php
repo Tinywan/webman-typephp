@@ -55,6 +55,7 @@ use TypePhp\Transform\VoidCastValidationVisitor;
 use PhpParser\Modifiers;
 use PhpParser\Node;
 use PhpParser\NodeAbstract;
+use PhpParser\NodeFinder;
 use PhpParser\NodeTraverser;
 use PhpParser\NodeVisitor\NameResolver;
 use PhpParser\NodeVisitor\CloningVisitor;
@@ -84,6 +85,15 @@ class Translator extends Preprocessor
     protected array $ignorePaths = [];
     protected array $argInfoHeaderFiles = [];
     protected array $registerSymbols = [];
+
+    protected function genArgumentDeclaration(ArgInfo $argInfo): string
+    {
+        if ($argInfo->byRef) {
+            return Type::REF . ' ' . $argInfo->name;
+        }
+
+        return parent::genArgumentDeclaration($argInfo);
+    }
 
     /** Generated per-file teardown functions for persistent AST class constants. */
     protected array $releaseAstConstantFns = [];
@@ -1770,11 +1780,19 @@ CODE;
             return $this->getProjectRuntimeEntryCompileCommandOptions();
         }
 
-        return match ($language) {
+        $options = match ($language) {
             null => $this->getCompileCommandOptions(),
             'c' => $this->getCCompileCommandOptions(),
             default => $this->getNativeCompileCommandOptions($language),
         };
+
+        // The generated registration unit is enormous but not a business hot path.
+        // Compiling it at -O0 bounds GCC memory without weakening user source optimization.
+        if (str_starts_with(basename($sourceFile), 'extension-')) {
+            return $options->with('optimize', 0);
+        }
+
+        return $options;
     }
 
     protected function buildCompileFileCommand(string $sourceFile, string $objectFile): string
@@ -1810,12 +1828,24 @@ CODE;
         // Windows: compile the resource file (icon, version info, etc.)
         $this->compileResourceFile();
 
+        $serialObjects = [];
+        if ($this->getPlatform()->supportsPcntlParallelCompile() && $job > 1) {
+            foreach ($sourceFiles as $index => $sourceFile) {
+                if (str_starts_with(basename($sourceFile), 'extension-')) {
+                    $this->climate->lightBlue('Compiling generated extension unit serially to bound peak memory');
+                    $serialObjects = $this->compileSourceFile([$sourceFile]);
+                    unset($sourceFiles[$index]);
+                }
+            }
+            $sourceFiles = array_values($sourceFiles);
+        }
+
         if (!$this->getPlatform()->supportsPcntlParallelCompile() or $job <= 1) {
             return $this->compileSourceFile($sourceFiles);
         }
 
         // Unix/Linux/macOS compile in parallel using pcntl
-        return $this->compileWithPcntl($sourceFiles, $job);
+        return array_merge($serialObjects, $this->compileWithPcntl($sourceFiles, $job));
     }
 
     protected function preparePhpXPrecompiledHeader(): void
@@ -4791,9 +4821,13 @@ CODE;
                         $argExpr = 'php::getCallArg(' . $k . ')';
                     }
                 }
-                $cppType = $this->getDefaultArgumentType($argInfo);
+                $cppType = $argInfo->byRef
+                    ? Type::REF
+                    : $this->getDefaultArgumentType($argInfo);
                 $declaredClass = $argInfo->declaredClass ?: $argInfo->class;
-                if ($this->isStrictScalarType($argInfo->type)) {
+                if ($argInfo->byRef) {
+                    $expr = $argExpr;
+                } elseif ($this->isStrictScalarType($argInfo->type)) {
                     $rawVar = 'raw_' . $var;
                     $cppCode .= $this->getIndent() . Type::VAR . ' ' . $rawVar . ' = ' . $argExpr . ';' . PHP_EOL;
                     $cppCode .= $this->genStrictScalarParamCheck(
@@ -4957,6 +4991,33 @@ CODE;
     /**
      * @throws \Exception
      */
+    /**
+     * PHP closure references are dynamic Zend reference slots even when their
+     * current value is scalar or array. Mark them before statement generation
+     * so an earlier assignment is not narrowed to incompatible C++ storage.
+     *
+     * @param list<Node\Stmt> $stmts
+     */
+    private function markClosureReferenceVariables(array $stmts): void
+    {
+        $finder = new NodeFinder();
+        /** @var list<Node\Expr\Closure> $closures */
+        $closures = $finder->findInstanceOf($stmts, Node\Expr\Closure::class);
+        foreach ($closures as $closure) {
+            foreach ($closure->uses as $useItem) {
+                if (
+                    !$useItem->byRef
+                    || !$useItem->var instanceof Node\Expr\Variable
+                    || !is_string($useItem->var->name)
+                ) {
+                    continue;
+                }
+                $name = $this->parseIdentifier($useItem->var);
+                $this->context->localVars[$name] = Type::REF;
+            }
+        }
+    }
+
     protected function parseFunction(Node\Stmt\Function_|Node\Stmt\ClassMethod $v): string
     {
         $this->resetFunction();
@@ -4991,9 +5052,11 @@ CODE;
             }
         }
         foreach ($this->functionDef->argInfoList as $argInfo) {
-            $argumentType = $argInfo->variadic
+            $argumentType = $argInfo->byRef
+                ? Type::REF
+                : ($argInfo->variadic
                 ? Type::ARRAY
-                : ($this->getNativeObjectArgumentType($argInfo) ?? $argInfo->type);
+                : ($this->getNativeObjectArgumentType($argInfo) ?? $argInfo->type));
             $this->addArgument($argInfo->name, $argumentType);
             if (!$argInfo->variadic and $argInfo->declaredClass) {
                 $this->addObject($argInfo->name, $argInfo->declaredClass);
@@ -5007,6 +5070,9 @@ CODE;
             }
         }
         $this->initializeImmutableFunctionContext();
+        if ($v->stmts) {
+            $this->markClosureReferenceVariables($v->stmts);
+        }
 
         if ($this->functionDef->generator) {
             try {
@@ -5029,10 +5095,10 @@ CODE;
             $this->context->ssaBuilder = $ssaBuilder;
             $this->analyzeStableObjects($ssaBuilder);
             // Range-proven loop counters are safe to narrow even without
-            // `use native_types`: the optimizer rejects counters whose PHP
+            // `use varint_types`: the optimizer rejects counters whose PHP
             // integer semantics could widen to float or otherwise escape.
             $optimizedLoopVars = $this->optimizeLoopVars($ssaBuilder);
-            if ($this->nativeTypes) {
+            if ($this->varIntTypes) {
                 // Narrow local variable types based on SSA analysis.
                 $this->optimizeVarTypes($ssaBuilder);
                 // Narrow native property accesses.
@@ -5049,7 +5115,6 @@ CODE;
                 $this->context->localVars[$varName] = $type;
             }
         }
-
         $stmts = '';
         $this->indentLevel++;
         try {
