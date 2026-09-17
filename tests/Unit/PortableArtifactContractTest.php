@@ -48,6 +48,6 @@ it('ships the dynamic portable-dir launcher contract', function (): void {
     }
 
     expect($dockerfile)->toContain(
-        'tinywan/typephp-linux-x64:v0.8.0@sha256:f18cac640edf52126acc1ad781f220f9fe547f7c8db925dcc38d4854f9436f90',
+        'tinywan/typephp-linux-x64:v0.9.0@sha256:7155c079aa8fef76f6460278535a7ce6b4a77c5b4734aadf31612e039f9eec75',
     );
 });
