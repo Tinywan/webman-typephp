@@ -147,6 +147,7 @@ fi
 
 if [[ "$is_static" = "1" ]]; then
     echo "[INFO] Packaging full-static single binary..."
+    mkdir -p "$stage_dir"
     trap cleanup_stage_on_failure EXIT
     install -m 0755 "$compiled_bin" "$stage_dir/webman-server"
     if command -v strip &>/dev/null; then
