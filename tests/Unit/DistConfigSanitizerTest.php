@@ -17,13 +17,13 @@ function writePhpFile(string $directory, string $relativePath, string $content):
 it('replaces unqualified Phar class constants with equivalent integer literals', function (): void {
     $sanitizer = new DistConfigSanitizer();
     $source = <<<'PHP'
-<?php
-return [
-    'phar_format' => Phar::PHAR, // Phar archive format: Phar::PHAR, Phar::TAR, Phar::ZIP
-    'phar_compression' => Phar::NONE, // Phar::NONE, Phar::GZ, Phar::BZ2
-    'signature_algorithm' => Phar::SHA256, // Phar::MD5, Phar::SHA1, Phar::SHA256
-];
-PHP;
+        <?php
+        return [
+            'phar_format' => Phar::PHAR, // Phar archive format: Phar::PHAR, Phar::TAR, Phar::ZIP
+            'phar_compression' => Phar::NONE, // Phar::NONE, Phar::GZ, Phar::BZ2
+            'signature_algorithm' => Phar::SHA256, // Phar::MD5, Phar::SHA1, Phar::SHA256
+        ];
+        PHP;
 
     $result = $sanitizer->sanitizePhpSource($source);
 
@@ -40,25 +40,23 @@ PHP;
 it('does not touch namespaced or non-mapped Phar references', function (): void {
     $sanitizer = new DistConfigSanitizer();
     $source = <<<'PHP'
-<?php
-return [
-    'app' => SomeVendor\Phar::DRIVER,
-    'ns' => \Phar::CUSTOM,
-    'plain' => 42,
-];
-PHP;
+        <?php
+        return [
+            'app' => SomeVendor\Phar::DRIVER,
+            'ns' => \Phar::CUSTOM,
+            'plain' => 42,
+        ];
+        PHP;
 
     $result = $sanitizer->sanitizePhpSource($source);
 
-    expect($result)
-        ->toContain('SomeVendor\Phar::DRIVER')
-        ->toContain('\\Phar::CUSTOM')
-        ->toContain("'plain' => 42,");
+    expect($result)->toContain('SomeVendor\Phar::DRIVER')->toContain('\\Phar::CUSTOM')->toContain("'plain' => 42,");
 });
 
 it('maps the full Phar constant set', function (): void {
     $sanitizer = new DistConfigSanitizer();
-    $source = "<?php return ['a' => Phar::PHAR, 'b' => Phar::TAR, 'c' => Phar::ZIP, "
+    $source =
+        "<?php return ['a' => Phar::PHAR, 'b' => Phar::TAR, 'c' => Phar::ZIP, "
         . "'d' => Phar::NONE, 'e' => Phar::GZ, 'f' => Phar::BZ2, "
         . "'g' => Phar::MD5, 'h' => Phar::SHA1, 'i' => Phar::SHA256, "
         . "'j' => Phar::SHA512, 'k' => Phar::OPENSSL];";
@@ -74,18 +72,18 @@ it('sanitizes a whole dist config directory and reports changed files', function
     mkdir($directory, 0777, true);
     try {
         $console = writePhpFile($directory, 'plugin/webman/console/app.php', <<<'PHP'
-<?php
-return [
-    'enable' => true,
-    'phar_format' => Phar::PHAR,
-    'phar_compression' => Phar::NONE,
-    'signature_algorithm' => Phar::SHA256,
-];
-PHP);
+            <?php
+            return [
+                'enable' => true,
+                'phar_format' => Phar::PHAR,
+                'phar_compression' => Phar::NONE,
+                'signature_algorithm' => Phar::SHA256,
+            ];
+            PHP);
         $untouched = writePhpFile($directory, 'app.php', <<<'PHP'
-<?php
-return ['debug' => true];
-PHP);
+            <?php
+            return ['debug' => true];
+            PHP);
         $readme = writePhpFile($directory, 'notes.txt', 'Phar::PHAR should never be read as config');
 
         $sanitizer = new DistConfigSanitizer();

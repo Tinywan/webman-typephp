@@ -2,6 +2,132 @@
 use support\App;
 use Workerman\Worker;
 
+function typephp_is_compiled_autoload_file(string $file): bool
+{
+    $basePath = str_replace('\\', '/', base_path());
+    $normalized = str_replace('\\', '/', $file);
+    if (!str_starts_with($normalized, $basePath . '/')) {
+        return false;
+    }
+    $relative = substr($normalized, strlen($basePath) + 1);
+    if (in_array($relative, ['app/functions.php', 'support/Request.php', 'support/Response.php'], true)) {
+        return true;
+    }
+    return preg_match('#^plugin/[^/]+/app/functions\.php$#', $relative) === 1;
+}
+
+function typephp_worker_bootstrap($worker): void
+{
+    if (empty(\Workerman\Worker::$eventLoopClass)) {
+        \Workerman\Worker::$eventLoopClass = \Workerman\Events\Select::class;
+    }
+
+    set_error_handler(function ($level, $message, $file = '', $line = 0) {
+        if (($level & (E_DEPRECATED | E_USER_DEPRECATED)) !== 0) {
+            return false;
+        }
+        if (error_reporting() & $level) {
+            throw new \ErrorException($message, 0, $level, $file, $line);
+        }
+        return false;
+    });
+
+    if ($worker) {
+        register_shutdown_function(function ($startTime) {
+            if (time() - $startTime <= 0.1) {
+                sleep(1);
+            }
+        }, time());
+    }
+
+    if (class_exists(\Dotenv\Dotenv::class) && file_exists(base_path(false) . '/.env')) {
+        if (method_exists(\Dotenv\Dotenv::class, 'createUnsafeMutable')) {
+            \Dotenv\Dotenv::createUnsafeMutable(base_path(false))->load();
+        } else {
+            \Dotenv\Dotenv::createMutable(base_path(false))->load();
+        }
+    }
+
+    \Webman\Config::clear();
+    \support\App::loadAllConfig(['route']);
+    if ($timezone = config('app.default_timezone')) {
+        date_default_timezone_set($timezone);
+    }
+
+    foreach (config('autoload.files', []) as $file) {
+        if (is_file($file) && !typephp_is_compiled_autoload_file($file)) {
+            include_once $file;
+        }
+    }
+    foreach (config('plugin', []) as $projects) {
+        if (!is_array($projects)) {
+            continue;
+        }
+        foreach ($projects as $project) {
+            if (!is_array($project)) {
+                continue;
+            }
+            foreach ($project['autoload']['files'] ?? [] as $file) {
+                if (is_file($file) && !typephp_is_compiled_autoload_file($file)) {
+                    include_once $file;
+                }
+            }
+        }
+        foreach ($projects['autoload']['files'] ?? [] as $file) {
+            if (is_file($file) && !typephp_is_compiled_autoload_file($file)) {
+                include_once $file;
+            }
+        }
+    }
+
+    \Webman\Middleware::load(config('middleware', []));
+    foreach (config('plugin', []) as $firm => $projects) {
+        if (!is_array($projects)) {
+            continue;
+        }
+        foreach ($projects as $name => $project) {
+            if (!is_array($project) || $name === 'static') {
+                continue;
+            }
+            \Webman\Middleware::load($project['middleware'] ?? []);
+        }
+        \Webman\Middleware::load($projects['middleware'] ?? [], (string) $firm);
+        if ($staticMiddlewares = config("plugin.$firm.static.middleware")) {
+            \Webman\Middleware::load(['__static__' => $staticMiddlewares], (string) $firm);
+        }
+    }
+    \Webman\Middleware::load(['__static__' => config('static.middleware', [])]);
+
+    foreach (config('bootstrap', []) as $className) {
+        if (class_exists($className)) {
+            call_user_func([$className, 'start'], $worker);
+        }
+    }
+    foreach (config('plugin', []) as $projects) {
+        if (!is_array($projects)) {
+            continue;
+        }
+        foreach ($projects as $project) {
+            if (!is_array($project)) {
+                continue;
+            }
+            foreach ($project['bootstrap'] ?? [] as $className) {
+                if (class_exists($className)) {
+                    call_user_func([$className, 'start'], $worker);
+                }
+            }
+        }
+        foreach ($projects['bootstrap'] ?? [] as $className) {
+            if (class_exists($className)) {
+                call_user_func([$className, 'start'], $worker);
+            }
+        }
+    }
+
+    // 路由已在父进程中加载。这里不能再次 Route::load()：它会先清空路由表，
+    // 随后的 require_once 又不会重复执行 route.php，最终导致插件路由全部丢失。
+}
+
 function main(): void
 {
     if (!defined('BASE_PATH')) {
@@ -32,12 +158,9 @@ function main(): void
     }
 
     // 1. 加载自定义辅助函数与配置（排除 route 延迟加载）
-    if (file_exists(base_path() . '/app/functions.php')) {
-        require_once base_path() . '/app/functions.php';
-    }
     \support\App::loadAllConfig(['route']);
     foreach (config('autoload.files', []) as $file) {
-        if (is_file($file)) {
+        if (is_file($file) && !typephp_is_compiled_autoload_file($file)) {
             include_once $file;
         }
     }
@@ -50,13 +173,13 @@ function main(): void
                 continue;
             }
             foreach ($project['autoload']['files'] ?? [] as $file) {
-                if (is_file($file)) {
+                if (is_file($file) && !typephp_is_compiled_autoload_file($file)) {
                     include_once $file;
                 }
             }
         }
         foreach ($projects['autoload']['files'] ?? [] as $file) {
-            if (is_file($file)) {
+            if (is_file($file) && !typephp_is_compiled_autoload_file($file)) {
                 include_once $file;
             }
         }

@@ -29,8 +29,7 @@ function createSaiAdminProfileFixture(
     string $saiAdminVersion = '6.1.1',
     string $webmanVersion = 'dev-master',
     string $workermanVersion = 'dev-master',
-): void
-{
+): void {
     foreach ([
         'app/controller',
         'app/model',
@@ -150,12 +149,19 @@ it('discovers SaiAdmin and installed plugin business sources and resources', fun
 
         $manifest = $profile->writeCoverageManifest(
             ['app', 'support', 'plugin/saiadmin', 'plugin/example/app', '.typephp/build/login.php'],
-            ['support/bootstrap.php', 'plugin/saiadmin/config', 'plugin/saiadmin/public',
-                'plugin/example/app/view', 'plugin/saiadmin/app/controller/LoginController.php'],
+            [
+                'support/bootstrap.php',
+                'plugin/saiadmin/config',
+                'plugin/saiadmin/public',
+                'plugin/example/app/view',
+                'plugin/saiadmin/app/controller/LoginController.php',
+            ],
             ['plugin/saiadmin/app/controller/LoginController.php' => '.typephp/build/login.php'],
         );
-        expect($manifest['counts'])->toBe(['compiled' => 4, 'generated' => 1])
-            ->and(file_exists($directory . '/.typephp/build/source-coverage.json'))->toBeTrue();
+        expect($manifest['counts'])
+            ->toBe(['compiled' => 4, 'generated' => 1])
+            ->and(file_exists($directory . '/.typephp/build/source-coverage.json'))
+            ->toBeTrue();
     } finally {
         removeSaiAdminProfileFixture($directory);
     }
@@ -166,15 +172,12 @@ it('does not reject SaiAdmin by version before applying structural compatibility
 
     try {
         createSaiAdminProfileFixture($directory, saiAdminVersion: '6.1.5');
-        expect((new SaiAdminProfile($directory))->assertSupported()['saithink/saiadmin'])->toBe('6.1.5');
+        expect(new SaiAdminProfile($directory)->assertSupported()['saithink/saiadmin'])->toBe('6.1.5');
 
         foreach (['6.1.0', '6.1.6-beta.1', '6.2.0'] as $version) {
             $lock = file_get_contents($directory . '/composer.lock');
-            file_put_contents(
-                $directory . '/composer.lock',
-                str_replace('6.1.5', $version, (string) $lock),
-            );
-            expect((new SaiAdminProfile($directory))->assertSupported()['saithink/saiadmin'])->toBe($version);
+            file_put_contents($directory . '/composer.lock', str_replace('6.1.5', $version, (string) $lock));
+            expect(new SaiAdminProfile($directory)->assertSupported()['saithink/saiadmin'])->toBe($version);
             file_put_contents($directory . '/composer.lock', (string) $lock);
         }
     } finally {
@@ -191,7 +194,7 @@ it('rejects a composer version that does not match the installed SaiAdmin source
             $directory . '/plugin/saiadmin/app/controller/LoginController.php',
             "<?php\nclass ChangedFixture {}\n",
         );
-        expect(fn(): array => (new SaiAdminProfile($directory))->assertSupported())
+        expect(fn(): array => new SaiAdminProfile($directory)->assertSupported())
             ->toThrow(RuntimeException::class, 'Installed SaiAdmin source does not match composer.lock package');
     } finally {
         removeSaiAdminProfileFixture($directory);
@@ -203,7 +206,7 @@ it('uses the upstream Composer constraint without an extra Webman runtime gate',
 
     try {
         createSaiAdminProfileFixture($directory, webmanVersion: 'v2.2.4', workermanVersion: 'v5.2.2');
-        expect((new SaiAdminProfile($directory))->assertSupported())->toBe([
+        expect(new SaiAdminProfile($directory)->assertSupported())->toBe([
             'saithink/saiadmin' => '6.1.1',
             'topthink/think-orm' => 'v3.0.34',
             'nesbot/carbon' => '3.13.2',
@@ -223,16 +226,14 @@ it('fails closed on unsupported dependency drift or excluded business PHP', func
             ->toThrow(RuntimeException::class, 'Unsupported topthink/think-orm version');
 
         $lock = (string) file_get_contents($directory . '/composer.lock');
-        file_put_contents(
-            $directory . '/composer.lock',
-            str_replace('v4.0.0', 'v3.0.34', $lock),
-        );
+        file_put_contents($directory . '/composer.lock', str_replace('v4.0.0', 'v3.0.34', $lock));
         $profile = new SaiAdminProfile($directory);
         expect(fn(): array => $profile->writeCoverageManifest(
             ['app', 'support', 'plugin/saiadmin', 'plugin/example/app'],
             ['plugin/example/app/controller/ExampleController.php'],
             [],
-        ))->toThrow(RuntimeException::class, 'excluded without a compiled AOT replacement');
+        ))
+            ->toThrow(RuntimeException::class, 'excluded without a compiled AOT replacement');
     } finally {
         removeSaiAdminProfileFixture($directory);
     }

@@ -1,4 +1,4 @@
-# SaiAdmin Linux amd64 AOT 验证证据
+# SaiAdmin AOT 验证证据
 
 验收编号：`AOT-SAIADMIN-LINUX-01`
 
@@ -191,6 +191,62 @@ business PHP leaked into portable-dir: 0
 6.1.5 本轮没有创建或连接数据库，也没有创建测试账号，因此只证明编译、链接、
 覆盖和 portable-dir 完整性，不证明验证码、登录、用户信息或权限拒绝路径已经运行。
 在新的隔离数据库验收完成前，6.1.5 的状态是“构建支持”，不是“完整业务验收”。
+
+## macOS arm64 非 Docker 原生验收
+
+2026-09-19 使用 SaiAdmin 6.1.5 的锁定项目组合执行宿主机原生编译。此路径没有调用
+Docker，也没有生成或冒充 Linux portable-dir。
+
+固定组合：
+
+| 项目 | 验证值 |
+| --- | --- |
+| 宿主目标 | macOS arm64 / Mach-O |
+| PHP embed | PHP ZTS 8.5.10 |
+| TypePHP | 0.9.0 |
+| C++ 编译器 | Apple Clang (`/usr/bin/clang++`) |
+| SaiAdmin | 6.1.5 |
+| Webman framework | v2.2.4 |
+| Workerman | v5.2.2 |
+| ThinkORM | v3.0.34 |
+| Carbon | 3.13.2 |
+
+执行命令：
+
+```bash
+php webman typephp:doctor --target=native
+php webman typephp:compile --profile=saiadmin
+```
+
+doctor 对 PHP embed、TypePHP、PHPX 和 C++ 编译器全部返回 `[OK]`。完整编译记录：
+
+```text
+Native toolchain ready (Docker will not be used).
+PHP 8.5 | TypePHP 0.9.0 | clang++
+Successfully compiled 2056 files
+Build successful: build/webman-server
+```
+
+产物为 82,796,672 字节的 `Mach-O 64-bit executable arm64`，SHA-256：
+
+```text
+d44177577a346bd76f2a5d96048634fb9c2c94b5ac97f668560f0584028899c0
+```
+
+动态依赖包括 `libphpx.dylib`、PHP ZTS `libphp.dylib`、GMP、MPFR、libc++ 和
+系统库；相同信息已写入 `.typephp/build/native-build-manifest.json`。
+
+为避免对外监听，运行验收使用一次性配置副本，将 HTTP 地址限制为
+`127.0.0.1:8787`、worker 数限制为 1。AOT 可执行文件启动结果为 `[OK]`，随后：
+
+| 路径 | HTTP | JSON 业务码 | 结果 |
+| --- | ---: | ---: | --- |
+| `GET /core/captcha` | 200 | 200 | `data.result=1`，UUID 与图片非空 |
+| `GET /core/system/user`（无 token） | 200 | 401 | 正确拒绝未登录请求 |
+
+普通 PHP 8.4.18 在同一份一次性运行配置下执行相同两条路径，HTTP 与业务码完全一致。
+本次没有使用登录账号或连接隔离数据库，因此不宣称登录和登录后用户信息已经在 macOS
+原生模式验收。
 
 ## 证据边界
 

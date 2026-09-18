@@ -7,7 +7,10 @@
 1. 安装并锁定 `tinywan/webman-typephp`、builder、PHP、Webman 和 Composer 依赖。
 2. 按 [开发规范](docs/development-standard.md) 约束新代码。
 3. 对照 [支持矩阵](docs/compatibility-matrix.md)，存量项目按 [迁移指南](docs/migration-guide.md) 只处理真实编译错误。
-4. 使用现有插件执行 `php webman typephp:doctor` 和 `php webman typephp:package --profile=saiadmin`。
+4. Linux portable-dir 使用 `php webman typephp:doctor` 和
+   `php webman typephp:package --profile=saiadmin`；宿主机原生编译使用
+   `php webman typephp:doctor --target=native` 和
+   `php webman typephp:compile --profile=saiadmin`。
 5. 用 `scripts/verify-package.sh` 检查产物契约。
 6. 仅在隔离环境中，用 `scripts/accept-linux.sh` 完成验证码、登录、用户信息和权限拒绝验收。
 
@@ -21,5 +24,7 @@
 - AOT 专用兼容改写只生成到 `.typephp/build/`；普通 PHP源码和执行路径保持不变。
 - 不因 AOT 适配修改 Webman；SaiAdmin 只修复已复现、无法由生成副本解决的问题。
 - 构建成功不等于运行成功，静态检查不等于业务验收。
+- `typephp:compile` 生成当前宿主平台程序，不等同于 Linux portable-dir；macOS 产物不能作为
+  Linux 发布物。
 
 本目录不含任何业务仓库源码、数据、凭据、内网地址或构建产物。

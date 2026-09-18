@@ -14,6 +14,14 @@ return [
         'enabled' => true,
         'image' => 'tinywan/typephp-webman-builder:v0.1.3',
     ],
+    // 宿主机原生编译配置；null 时按环境变量、常用 Composer/Homebrew 路径自动发现。
+    'native' => [
+        'tpc' => null,
+        'php' => null,
+        'php_home' => null,
+        'phpx_home' => null,
+        'cxx' => null,
+    ],
     // 默认输出配置
     'build' => [
         'output_name' => 'webman-server',

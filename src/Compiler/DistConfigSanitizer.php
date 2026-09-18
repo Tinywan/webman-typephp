@@ -49,9 +49,10 @@ final class DistConfigSanitizer
         if (!is_dir($configDir)) {
             return $changedFiles;
         }
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($configDir, \FilesystemIterator::SKIP_DOTS),
-        );
+        $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator(
+            $configDir,
+            \FilesystemIterator::SKIP_DOTS,
+        ));
         foreach ($iterator as $fileInfo) {
             if (!$fileInfo->isFile()) {
                 continue;
@@ -158,12 +159,16 @@ final class DistConfigSanitizer
             // 单字符 token：仅 '\'（T_NS_SEPARATOR）需要再往前看一级
             return $previous === '\\' && $this->isNameToken($tokens, $index - 2);
         }
-        return in_array($previous[0], [
-            T_STRING,
-            T_NAME_FULLY_QUALIFIED,
-            T_NAME_QUALIFIED,
-            T_NAME_RELATIVE,
-        ], true);
+        return in_array(
+            $previous[0],
+            [
+                T_STRING,
+                T_NAME_FULLY_QUALIFIED,
+                T_NAME_QUALIFIED,
+                T_NAME_RELATIVE,
+            ],
+            true,
+        );
     }
 
     /**
@@ -178,12 +183,16 @@ final class DistConfigSanitizer
         if (!is_array($token)) {
             return $token === '\\';
         }
-        return in_array($token[0], [
-            T_STRING,
-            T_NAME_FULLY_QUALIFIED,
-            T_NAME_QUALIFIED,
-            T_NAME_RELATIVE,
-            T_NS_SEPARATOR,
-        ], true);
+        return in_array(
+            $token[0],
+            [
+                T_STRING,
+                T_NAME_FULLY_QUALIFIED,
+                T_NAME_QUALIFIED,
+                T_NAME_RELATIVE,
+                T_NS_SEPARATOR,
+            ],
+            true,
+        );
     }
 }

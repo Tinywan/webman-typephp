@@ -12,7 +12,16 @@ it('keeps the CompilerBase override compatible with the v0.8 native build platfo
     $methodCallPatch = file_get_contents($repositoryRoot . '/docker/patch_method_call_trait.php');
     $nativeTypePatch = file_get_contents($repositoryRoot . '/docker/patch_native_type_compatibility_trait.php');
     $stubGenerator = file_get_contents($repositoryRoot . '/docker/gen_stub.php');
-    if ($dockerfile === false || $compilerBase === false || $translator === false || $assignOpTrait === false || $funcCallOptimizer === false || $methodCallPatch === false || $nativeTypePatch === false || $stubGenerator === false) {
+    if (
+        $dockerfile === false
+        || $compilerBase === false
+        || $translator === false
+        || $assignOpTrait === false
+        || $funcCallOptimizer === false
+        || $methodCallPatch === false
+        || $nativeTypePatch === false
+        || $stubGenerator === false
+    ) {
         throw new RuntimeException('Unable to load CompilerBase Docker override files.');
     }
 
@@ -20,7 +29,9 @@ it('keeps the CompilerBase override compatible with the v0.8 native build platfo
         ->toContain('COPY CompilerBase.php /opt/typephp/vendor/swoole/typephp/src/CompilerBase.php')
         ->toContain('RUN php /tmp/patch_native_type_compatibility_trait.php')
         ->toContain('RUN php /tmp/patch_method_call_trait.php')
-        ->toContain('COPY FuncCallOptimizer.php /opt/typephp/vendor/swoole/typephp/src/Optimizer/FuncCallOptimizer.php');
+        ->toContain(
+            'COPY FuncCallOptimizer.php /opt/typephp/vendor/swoole/typephp/src/Optimizer/FuncCallOptimizer.php',
+        );
 
     foreach ([
         'use TypePhp\\Platform\\Ios;',
@@ -60,7 +71,8 @@ it('keeps the CompilerBase override compatible with the v0.8 native build platfo
     expect($compilerBase)->not->toContain("\$info['classPtr']");
     expect($compilerBase)->not->toContain('$method . \'__call\'');
     expect($compilerBase)
-        ->not->toContain('Symbol::getCalledCe()')
+        ->not
+        ->toContain('Symbol::getCalledCe()')
         ->toContain('$cePtr = $this->getCalledCeExpr();')
         ->toContain('return $this->getCalledCeExpr();');
     expect($stubGenerator)
@@ -79,10 +91,8 @@ it('keeps the CompilerBase override compatible with the v0.8 native build platfo
         ->toContain('private function markClosureReferenceVariables(array $stmts): void')
         ->toContain('findInstanceOf($stmts, Node\Expr\Closure::class)')
         ->toContain('$this->context->localVars[$name] = Type::REF;')
-        ->toMatch(
-            '/markClosureReferenceVariables\\(\\$v->stmts\\);\\s*}\\s*'
-            . 'if \\(\\$this->functionDef->generator\\)/',
-        );
+        ->toMatch('/markClosureReferenceVariables\\(\\$v->stmts\\);\\s*}\\s*'
+        . 'if \\(\\$this->functionDef->generator\\)/');
     expect($funcCallOptimizer)
         ->toContain('$cVar = $this->escapeVarName($var);')
         ->toContain('if (!$this->hasVar($cVar) && $var !== \'this\')')

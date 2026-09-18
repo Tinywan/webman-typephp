@@ -18,9 +18,9 @@ final class SaiAdminProfile
         'nesbot/carbon' => ['3.13.2'],
     ];
 
-    public function __construct(private readonly string $basePath)
-    {
-    }
+    public function __construct(
+        private readonly string $basePath,
+    ) {}
 
     /**
      * @return array<string, string>
@@ -62,10 +62,8 @@ final class SaiAdminProfile
                 );
             }
         }
-        return array_intersect_key(
-            $installed,
-            ['saithink/saiadmin' => true] + array_fill_keys(array_keys(self::SUPPORTED_EXACT_VERSIONS), true),
-        );
+        return array_intersect_key($installed, ['saithink/saiadmin' => true]
+        + array_fill_keys(array_keys(self::SUPPORTED_EXACT_VERSIONS), true));
     }
 
     /**
@@ -161,25 +159,22 @@ final class SaiAdminProfile
     public function filterUserIgnores(array $ignores): array
     {
         $businessFiles = $this->businessFiles();
-        return array_values(array_filter(
-            $ignores,
-            function (mixed $ignore) use ($businessFiles): bool {
-                if (!is_string($ignore)) {
-                    return true;
-                }
-                foreach (self::REQUIRED_COMPILED_DEPENDENCIES as $file) {
-                    if ($this->matchesAny($file, [$ignore])) {
-                        return false;
-                    }
-                }
-                foreach ($businessFiles as $file) {
-                    if ($this->matchesAny($file, [$ignore])) {
-                        return false;
-                    }
-                }
+        return array_values(array_filter($ignores, function (mixed $ignore) use ($businessFiles): bool {
+            if (!is_string($ignore)) {
                 return true;
-            },
-        ));
+            }
+            foreach (self::REQUIRED_COMPILED_DEPENDENCIES as $file) {
+                if ($this->matchesAny($file, [$ignore])) {
+                    return false;
+                }
+            }
+            foreach ($businessFiles as $file) {
+                if ($this->matchesAny($file, [$ignore])) {
+                    return false;
+                }
+            }
+            return true;
+        }));
     }
 
     /**
@@ -188,20 +183,17 @@ final class SaiAdminProfile
      */
     public function filterRuntimeResources(array $resources): array
     {
-        return array_values(array_filter(
-            $resources,
-            function (mixed $resource): bool {
-                if (!is_string($resource)) {
-                    return true;
-                }
-                foreach (self::REQUIRED_COMPILED_DEPENDENCIES as $file) {
-                    if ($this->matchesAny($file, [$resource])) {
-                        return false;
-                    }
-                }
+        return array_values(array_filter($resources, function (mixed $resource): bool {
+            if (!is_string($resource)) {
                 return true;
-            },
-        ));
+            }
+            foreach (self::REQUIRED_COMPILED_DEPENDENCIES as $file) {
+                if ($this->matchesAny($file, [$resource])) {
+                    return false;
+                }
+            }
+            return true;
+        }));
     }
 
     /**
@@ -285,19 +277,19 @@ final class SaiAdminProfile
 
     private function isNonBusinessPhp(string $path): bool
     {
-        return $path === 'support/bootstrap.php'
+        return (
+            $path === 'support/bootstrap.php'
             || str_contains($path, '/config/')
             || str_contains($path, '/app/view/')
             || str_starts_with($path, 'plugin/saiadmin/db/')
-            || str_starts_with($path, 'plugin/saiadmin/utils/code/stub/');
+            || str_starts_with($path, 'plugin/saiadmin/utils/code/stub/')
+        );
     }
 
     private function assertInstalledSaiAdminMatchesPackage(): void
     {
         $installed = $this->saiAdminBusinessSourceMap($this->absolute('plugin/saiadmin'));
-        $package = $this->saiAdminBusinessSourceMap(
-            $this->absolute('vendor/saithink/saiadmin/src/plugin/saiadmin'),
-        );
+        $package = $this->saiAdminBusinessSourceMap($this->absolute('vendor/saithink/saiadmin/src/plugin/saiadmin'));
         if ($installed === $package) {
             return;
         }
@@ -323,9 +315,10 @@ final class SaiAdminProfile
         }
 
         $files = [];
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS),
-        );
+        $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator(
+            $root,
+            \FilesystemIterator::SKIP_DOTS,
+        ));
         foreach ($iterator as $file) {
             if (!$file->isFile() || strtolower($file->getExtension()) !== 'php') {
                 continue;

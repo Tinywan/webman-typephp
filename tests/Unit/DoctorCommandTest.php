@@ -17,3 +17,13 @@ it('runs doctor command and checks local system environment', function (): void 
     // 状态码应为 0 (成功) 或 1 (当缺少前置依赖时)
     expect($statusCode)->toBeIn([0, 1]);
 });
+
+it('supports an independent native toolchain target', function (): void {
+    $command = new DoctorCommand();
+    $tester = new CommandTester($command);
+
+    $statusCode = $tester->execute(['--target' => 'native']);
+
+    expect($tester->getDisplay())->toContain('TypePHP Environment Diagnostic Tool')->toContain('Native');
+    expect($statusCode)->toBeIn([0, 1]);
+});

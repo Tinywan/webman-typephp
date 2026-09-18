@@ -16,13 +16,13 @@
 
 ## 📖 简介
 
-`tinywan/webman-typephp` 是面向 Webman 2.x 的 [TypePHP AOT](https://swoole.com/aot/zh) 构建插件。它会从现有 Webman 项目生成 AOT 入口和 Linux 编译配置，再交给固定版本的 Docker builder 完成编译，最后整理出可以复制到目标服务器的 `dist/` 目录。
+`tinywan/webman-typephp` 是面向 Webman 2.x 的 [TypePHP AOT](https://swoole.com/aot/zh) 构建插件。它会从现有 Webman 项目生成 AOT 入口和编译配置，可交给固定版本的 Docker builder 生成 Linux portable-dir，也可直接调用宿主机 TypePHP 工具链生成当前平台原生程序。
 
-宿主机只需要 PHP、Composer 和 Docker，不需要安装 C++、Clang 或 TypePHP 编译工具链。
+Linux portable-dir 模式下，宿主机只需要 PHP、Composer 和 Docker。原生模式不使用 Docker，但需要匹配 ABI 的 PHP embed SDK、PHPX、TypePHP 和 C++17 编译器。
 
 ## 🌟 核心特性
 
-- ⚡ **一键构建**：自动生成 `main.php` 与 `project.linux.yml`，统一调度 Docker 编译环境。
+- ⚡ **两种构建路径**：`typephp:package` 使用 Docker 生成 Linux portable-dir；`typephp:compile` 直接调用宿主机 TypePHP、PHPX 与 C++ 编译器生成当前平台程序。
 - 🧩 **全版本 Webman 兼容**：自动把 `webman-framework` 的 `helpers.php` 与 `fast-route` 的 `functions.php` 平铺为 AOT 专用版本（`.typephp/build/`），规避新版框架顶层 `if` 守卫触发的 `Unsupported statement: Stmt_If` 编译错误或静默跳过，同时保证 `base_path()`、`config()`、`FastRoute\simpleDispatcher()` 等全局函数完整编译进二进制。
 - 🩹 **协程静态属性补丁**：自动把 `workerman/coroutine` 的 `Context`/`WaitGroup`/`Barrier` 中未初始化的标量静态属性补成可空并默认 `null`（`.typephp/build/`），规避 TypePHP 编译产物把未初始化标量静态读作零值导致 `??=` 守卫失效、进而触发 `Invalid callback ::destroy` 崩溃循环的问题。
 - 🔧 **可变参数闭包补丁**：自动把 `Worker`/`TcpConnection`/`AsyncTcpConnection`/`Select`/webman `File` 中签名不足的错误处理与信号闭包补成可变参数形态（`.typephp/build/`），规避 TypePHP 编译产物对闭包调用强制精确参数个数（PHP 语义允许多传忽略）导致每次 accept 抛 `ArgumentCountError`、worker 崩溃循环的问题。
@@ -52,6 +52,12 @@ composer require tinywan/webman-typephp --dev
 php webman typephp:doctor
 ```
 
+检查不使用 Docker 的宿主机原生工具链：
+
+```bash
+php webman typephp:doctor --target=native
+```
+
 ### 3. 编译打包
 
 ```bash
@@ -69,6 +75,19 @@ php webman typephp:package --refresh-main
 ```
 
 默认 builder 为 `tinywan/typephp-webman-builder:v0.1.3`。编译在 Docker 中完成，宿主机不需要 C++、Clang 或 TypePHP 编译器。
+
+直接调用宿主机 TypePHP 和 clang 编译当前平台程序：
+
+```bash
+php webman typephp:doctor --target=native
+php webman typephp:compile --profile=saiadmin
+```
+
+原生模式输出 `build/webman-server` 及
+`.typephp/build/native-build-manifest.json`。它不会启动 Docker，也不会把当前平台程序包装成 Linux
+portable-dir；macOS 构建结果是 Mach-O，只能在 ABI 兼容的 macOS 环境运行。
+如果项目中已经存在旧版本插件生成的 `main.php`，升级后首次重建应增加
+`--refresh-main`；命令会先保留 `main.php.bak`。
 
 SaiAdmin 的支持矩阵、开发规范、存量迁移、配置样例、验收脚本和实跑证据见
 [`docs/saiadmin-aot/`](docs/saiadmin-aot/README.md)。
@@ -126,10 +145,12 @@ dist/
 | --- | --- |
 | `php webman typephp:package` | 使用默认 builder 构建 Linux portable-dir |
 | `php webman typephp:package --profile=saiadmin` | 使用锁版本、失败关闭的 SaiAdmin 自动发现与兼容规则构建 |
+| `php webman typephp:compile --profile=saiadmin` | 不使用 Docker，调用本机 TypePHP 工具链编译当前平台原生程序 |
 | `php webman typephp:package --force` | 覆盖已有输出，并保留旧目录备份 |
 | `php webman typephp:package --refresh-main` | 强制从最新官方 stub 刷新 `main.php`（旧文件自动备份） |
 | `php webman typephp:package --image=...` | 使用指定且经过验证的 Docker 镜像 |
 | `php webman typephp:doctor` | 检查 PHP、Docker 和构建前置条件 |
+| `php webman typephp:doctor --target=native` | 检查 PHP embed、PHPX、TypePHP 和本机 C++ 编译器 |
 | `php webman typephp:init-ci` | 生成 Linux amd64 GitHub Actions 工作流 |
 
 ## ⚙️ 配置
@@ -143,6 +164,13 @@ return [
         'enabled' => true,
         'image' => 'tinywan/typephp-webman-builder:v0.1.3',
     ],
+    'native' => [
+        'tpc' => null,
+        'php' => null,
+        'php_home' => null,
+        'phpx_home' => null,
+        'cxx' => null,
+    ],
     'build' => [
         'output_name' => 'webman-server',
         'dist_dir' => 'dist',
@@ -152,6 +180,11 @@ return [
 ```
 
 `--image` 的优先级最高；未指定时使用上述 `docker.image`，配置缺失时才回退至 `tinywan/typephp-webman-builder:v0.1.3`。
+
+原生工具链默认按环境变量和常见 Composer/Homebrew 路径发现。自动发现不适用时，可通过
+`native.*`、`PHP_HOME`、`PHPX_HOME`、`TYPEPHP_TPC`、`CXX`，或
+`typephp:compile` 的同名命令选项显式指定。PHP 可执行文件、`php-config`、头文件、
+`libphp` 和 `libphpx` 必须来自同一 PHP 8.4/8.5 ABI；发现版本混用时命令会在编译前失败。
 
 ### SaiAdmin profile
 

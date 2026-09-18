@@ -1,8 +1,9 @@
 # SaiAdmin AOT 支持矩阵
 
-首版只验收 Linux amd64。profile 不对 Webman、Workerman 或 SaiAdmin 增加版本
-白名单；依赖是否可安装由 Composer 约束决定。表中的版本是已验证记录，不代表未列出
-版本自动兼容；源码结构、安装副本或锁定依赖漂移仍会失败关闭。
+发布型 portable-dir 首版只验收 Linux amd64；宿主机原生模式另已验证 macOS arm64。
+profile 不对 Webman、Workerman 或 SaiAdmin 增加版本白名单；依赖是否可安装由 Composer
+约束决定。表中的版本是已验证记录，不代表未列出版本自动兼容；源码结构、安装副本或
+锁定依赖漂移仍会失败关闭。
 
 | 组件 | 支持/锁定版本 |
 | --- | --- |
@@ -13,6 +14,15 @@
 | Carbon | 3.13.2 |
 | Webman framework | 沿用插件 Composer 约束 `^1.5.4 \|\| ^2.0 \|\| dev-master`；已验证 `v2.2.4` 和记录中的 `dev-master` |
 | Workerman | profile 无额外版本门禁；已验证 `v5.2.2` 和记录中的 `dev-master` |
+
+## 非 Docker 原生模式
+
+| 宿主平台 | PHP embed / TypePHP | SaiAdmin | 编译 | 启动与 HTTP | 结论 |
+| --- | --- | --- | --- | --- | --- |
+| macOS arm64 | PHP ZTS 8.5.10 / TypePHP 0.9.0 | 6.1.5 | 2,056 / 2,056，通过 | 验证码和未登录权限拒绝通过 | 当前宿主原生验证通过 |
+
+原生模式要求 PHP 可执行文件、embed 头文件与 `libphp`、PHPX 来自同一 ABI。它生成
+当前宿主平台程序，不是跨平台编译：macOS 产物是 Mach-O，不能作为 Linux 发布物。
 
 ## 已验证版本
 
@@ -45,6 +55,7 @@ CakePHP Core/Database/Datasource/Event/Utility `5.4.2`、League Container
 ## 未承诺范围
 
 - Windows 可执行文件和 DLL。
+- 将 macOS 原生产物当作 Linux portable-dir 发布。
 - 未来 SaiAdmin 或依赖版本的自动兼容。
 - 未经完整编译和业务验收的第三方插件。
 - 依赖动态 `include`、`eval`、闭包 rebinding 或不稳定魔术调用且无法静态等价转换的业务功能。

@@ -80,10 +80,9 @@ it('ships the v0.1.3 builder image in the plugin configuration', function (): vo
         ->toContain('vendor/webman/captcha/src/Font')
         ->toContain('vendor/workerman/channel')
         ->not->toContain('vendor/workerman/coroutine/src/Pool.php')
-        ->not->toContain('vendor/workerman/coroutine/src/Utils/DestructionWatcher.php')
-        ->toContain('vendor/voku/portable-ascii/src/voku/helper/data')
-        ->toContain('vendor/zoujingli/ip2region/ip2region.xdb')
-        ->toContain('plugin/saiadmin/utils/code/stub');
+        ->not->toContain('vendor/workerman/coroutine/src/Utils/DestructionWatcher.php')->toContain(
+            'vendor/voku/portable-ascii/src/voku/helper/data',
+        )->toContain('vendor/zoujingli/ip2region/ip2region.xdb')->toContain('plugin/saiadmin/utils/code/stub');
     expect($pluginConfig['ignore'] ?? [])
         ->toContain('vendor/symfony/console/Helper/Table.php')
         ->toContain('vendor/symfony/mime/HtmlToTextConverter/LeagueHtmlToMarkdownConverter.php')
@@ -115,15 +114,19 @@ it('keeps new packaged ignore defaults when a project has stale published config
     $command = new \Tinywan\Typephp\Commands\PackageCommand();
     $method = new ReflectionMethod($command, 'mergePluginConfig');
 
-    $merged = $method->invoke($command, [
-        'docker' => ['image' => 'tinywan/typephp-webman-builder:v0.1.3'],
-        'ignore' => ['vendor/carbonphp/carbon-doctrine-types'],
-        'runtime_resources' => ['plugin/saiadmin/utils/code/stub'],
-    ], [
-        'docker' => ['image' => 'tinywan/typephp-webman-builder:v0.2.1'],
-        'ignore' => ['app/model'],
-        'runtime_resources' => ['public'],
-    ]);
+    $merged = $method->invoke(
+        $command,
+        [
+            'docker' => ['image' => 'tinywan/typephp-webman-builder:v0.1.3'],
+            'ignore' => ['vendor/carbonphp/carbon-doctrine-types'],
+            'runtime_resources' => ['plugin/saiadmin/utils/code/stub'],
+        ],
+        [
+            'docker' => ['image' => 'tinywan/typephp-webman-builder:v0.2.1'],
+            'ignore' => ['app/model'],
+            'runtime_resources' => ['public'],
+        ],
+    );
 
     expect($merged['docker']['image'])->toBe('tinywan/typephp-webman-builder:v0.2.1');
     expect($merged['ignore'])->toBe([

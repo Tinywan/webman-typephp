@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 return [
     Tinywan\Typephp\Commands\PackageCommand::class,
+    Tinywan\Typephp\Commands\NativeCompileCommand::class,
     Tinywan\Typephp\Commands\DoctorCommand::class,
     Tinywan\Typephp\Commands\InitCiCommand::class,
 ];
