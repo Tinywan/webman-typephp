@@ -38,7 +38,7 @@ it('does not let stale project config exclude required coroutine dependencies', 
     }
 });
 
-it('uses a stable Workerman pool placeholder identity in its AOT copy', function (): void {
+it('bypasses the Workerman pool WeakMap placeholder outside coroutines in its AOT copy', function (): void {
     $directory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'typephp-test-' . bin2hex(random_bytes(4));
     mkdir($directory . '/vendor/workerman/coroutine/src', 0777, true);
     file_put_contents(
@@ -54,8 +54,8 @@ it('uses a stable Workerman pool placeholder identity in its AOT copy', function
         expect($generator->generateSwitchTerminalSources())
             ->toContain('.typephp/build/workerman-coroutine-pool.php');
         expect(file_get_contents($directory . '/.typephp/build/workerman-coroutine-pool.php'))
-            ->toContain('        $placeholder = $this;')
-            ->not->toContain('        $placeholder = new stdClass;');
+            ->toContain('        if (!Coroutine::isCoroutine()) {')
+            ->toContain('        $placeholder = new stdClass;');
     } finally {
         removeTypephpTestDirectory($directory);
     }

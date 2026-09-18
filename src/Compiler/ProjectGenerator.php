@@ -591,7 +591,15 @@ class ProjectGenerator
         ],
         'vendor/workerman/coroutine/src/Pool.php' => [
             '        $placeholder = new stdClass;'
-            => '        $placeholder = $this;',
+            => '        if (!Coroutine::isCoroutine()) {' . "\n"
+                . '            $connection = ($this->connectionCreateHandler)();' . "\n"
+                . '            if (!$this->isValidConnection($connection)) {' . "\n"
+                . "                throw new PoolException('CreateConnection failed, expected a connection object, but got ' . gettype(\$connection) . '.');" . "\n"
+                . '            }' . "\n"
+                . '            $this->connections[$connection] = $this->lastUsedTimes[$connection] = $this->lastHeartbeatTimes[$connection] = time();' . "\n"
+                . '            return $connection;' . "\n"
+                . '        }' . "\n"
+                . '        $placeholder = new stdClass;',
         ],
         'vendor/workerman/workerman/src/Protocols/Websocket.php' => [
             'foreach ($connection->headers as $header) {'
