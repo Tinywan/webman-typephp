@@ -38,6 +38,29 @@ it('does not let stale project config exclude required coroutine dependencies', 
     }
 });
 
+it('uses a stable Workerman pool placeholder identity in its AOT copy', function (): void {
+    $directory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'typephp-test-' . bin2hex(random_bytes(4));
+    mkdir($directory . '/vendor/workerman/coroutine/src', 0777, true);
+    file_put_contents(
+        $directory . '/vendor/workerman/coroutine/src/Pool.php',
+        "<?php\nnamespace Workerman\\Coroutine;\nclass Pool {\n"
+        . "    public function createConnection(): object\n    {\n"
+        . "        \$placeholder = new stdClass;\n"
+        . "        return \$placeholder;\n    }\n}\n",
+    );
+
+    try {
+        $generator = new ProjectGenerator($directory);
+        expect($generator->generateSwitchTerminalSources())
+            ->toContain('.typephp/build/workerman-coroutine-pool.php');
+        expect(file_get_contents($directory . '/.typephp/build/workerman-coroutine-pool.php'))
+            ->toContain('        $placeholder = $this;')
+            ->not->toContain('        $placeholder = new stdClass;');
+    } finally {
+        removeTypephpTestDirectory($directory);
+    }
+});
+
 function removeTypephpTestDirectory(string $directory): void
 {
     if (!is_dir($directory)) {

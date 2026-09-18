@@ -239,6 +239,7 @@ class ProjectGenerator
         'vendor/godruoyi/php-snowflake/src/Snowflake.php' => '.typephp/build/godruoyi-snowflake.php',
         'vendor/godruoyi/php-snowflake/src/Sonyflake.php' => '.typephp/build/godruoyi-sonyflake.php',
         'vendor/guzzlehttp/guzzle/src/Handler/CurlMultiHandler.php' => '.typephp/build/guzzle-curl-multi-handler.php',
+        'vendor/workerman/coroutine/src/Pool.php' => '.typephp/build/workerman-coroutine-pool.php',
         'vendor/workerman/workerman/src/Protocols/Websocket.php' => '.typephp/build/workerman-websocket.php',
         'vendor/zoujingli/ip2region/XdbSearcher.php' => '.typephp/build/ip2region-xdb-searcher.php',
         'vendor/zoujingli/ip2region/src/ip2region/xdb/Util.php' => '.typephp/build/ip2region-v3-util.php',
@@ -587,6 +588,10 @@ class ProjectGenerator
             . "\n\n"
             . '        $options = [];'
             => '        $options = [];',
+        ],
+        'vendor/workerman/coroutine/src/Pool.php' => [
+            '        $placeholder = new stdClass;'
+            => '        $placeholder = $this;',
         ],
         'vendor/workerman/workerman/src/Protocols/Websocket.php' => [
             'foreach ($connection->headers as $header) {'
@@ -3038,6 +3043,7 @@ class ProjectGenerator
                 $sourceRel === 'plugin/saiadmin/app/cache/ReflectionCache.php',
                 $sourceRel === 'plugin/saiadmin/app/cache/UserAuthCache.php',
                 $sourceRel === 'plugin/saiadmin/exception/SystemException.php',
+                $sourceRel === 'vendor/workerman/coroutine/src/Pool.php',
                 $sourceRel === 'vendor/nelexa/zip/src/IO/Stream/ResponseStream.php',
                 $sourceRel === 'vendor/zoujingli/ip2region/src/ip2region/xdb/Util.php' => 1,
                 default => null,
@@ -3050,6 +3056,8 @@ class ProjectGenerator
                         => 'controller request arity',
                     $sourceRel === 'plugin/saiadmin/exception/SystemException.php'
                         => 'system exception nullable cause',
+                    $sourceRel === 'vendor/workerman/coroutine/src/Pool.php'
+                        => 'Workerman coroutine pool placeholder identity',
                     $sourceRel === 'vendor/nelexa/zip/src/IO/Stream/ResponseStream.php'
                         => 'Nelexa PSR stream signature',
                     $sourceRel === 'vendor/zoujingli/ip2region/src/ip2region/xdb/Util.php'
