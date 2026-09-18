@@ -81,23 +81,59 @@ cd dist
 
 ## 📦 产物契约
 
-成功构建后的完整目录结构如下（与全静态便携环境 100% 对齐）：
+根据打包命令的不同，构建产物呈现两种专业形态：
+
+### 形态 1：全静态单二进制产物 (`php webman typephp:package --static`)
+
+输出纯静态链接（Statically Linked）单一可执行程序，**零外部动态库依赖**，甚至不需要目标系统存在任何 PHP 环境或 glibc（支持在 Alpine、BusyBox 或任何最小 Linux 容器上直接运行）：
 
 ```text
 dist/
-├── webman-server.bin       # TypePHP 生成的 ELF 原生二进制
-├── webman-server           # 启动包装脚本（自动载入 php.ini 与底层动态库）
-├── start.sh                # 标准 Workerman 启动脚本
+├── webman-server           # 纯静态链接单二进制 (ELF 64-bit statically linked, stripped，约 17MB)
+├── start.sh                # 标准 Workerman 启动脚本（直接 exec ./webman-server "$@"）
+├── build-manifest.json     # 输入、镜像与时间等构建元数据
+├── config/                 # 业务运行时配置（支持修改配置并动态热生效）
+├── public/                 # 静态 Web 资源（HTML、CSS、JS、静态图片等）
+├── app/
+│   ├── view/               # 视图模板文件（若存在）
+│   └── functions.php       # 用户自定义全局函数（若存在）
+└── runtime/                # 运行时缓存与日志目录 (logs, views)
+```
+
+> **特点**：
+> - **无动态依赖**：不需要 `libphp.so`，不需要 `ext/*.so`，不需要 `lib/` 动态库目录，也不需要外部 `php.ini`。
+> - **超轻量容器**：可直接使用 5MB 的 `alpine:latest` 或 `scratch` 基础镜像制作 20MB 左右的生产级超轻镜像：
+>   ```dockerfile
+>   FROM alpine:latest
+>   COPY dist /app
+>   WORKDIR /app
+>   EXPOSE 8787
+>   CMD ["./webman-server", "start"]
+>   ```
+
+---
+
+### 形态 2：动态便携目录产物 (`php webman typephp:package`)
+
+输出自包含的绿色便携目录，自带预编译 `libphp.so` 核心运行时与动态扩展，适合需要灵活挂载或使用 Linux 原生 `.so` 扩展的场景：
+
+```text
+dist/
+├── webman-server.bin       # TypePHP 生成的 ELF 原生可执行文件（动态链接）
+├── webman-server           # 启动包装脚本（自动配置 LD_LIBRARY_PATH 与 PHPRC）
+├── start.sh                # 标准 Workerman 启动管理脚本
 ├── libphp.so               # PHP 核心运行时共享库
 ├── libphpx.so              # PHPX 运行时共享库
 ├── php.ini                 # 自包含纯净 PHP 运行时配置
 ├── ext/                    # 随包分发的 PHP 核心与网络扩展模块 (.so)
-├── lib/                    # 随包发布的底层系统与扩展动态依赖库 (ldd 完整收集)
-├── runtime/                # 运行时缓存与日志目录 (logs, views)
+├── lib/                    # 随包发布的底层系统与扩展动态依赖库 (通过 ldd 完整收集)
 ├── build-manifest.json     # 输入、镜像与时间等构建元数据
-├── config/                 # 项目运行时配置（若存在）
-├── public/                 # 静态资源（若存在）
-└── app/view/               # 视图模板（若存在）
+├── config/                 # 业务运行时配置
+├── public/                 # 静态 Web 资源
+├── app/
+│   ├── view/               # 视图模板（若存在）
+│   └── functions.php       # 自定义全局函数（若存在）
+└── runtime/                # 运行时缓存与日志目录 (logs, views)
 ```
 
 `lib/` 携带构建及扩展所需的所有动态依赖库；glibc、动态加载器由目标系统提供。`build-manifest.json` 用于追踪构建，不应写入密钥、令牌或其他敏感信息。
