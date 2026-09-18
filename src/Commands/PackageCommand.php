@@ -61,11 +61,16 @@ class PackageCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $pluginConfig = [];
+        $defaultPluginConfig = require dirname(__DIR__) . '/config/plugin/tinywan/typephp/app.php';
+        if (!is_array($defaultPluginConfig)) {
+            $output->writeln('<error>[ERROR] The packaged TypePHP configuration is invalid.</error>');
+            return Command::FAILURE;
+        }
+        $pluginConfig = $defaultPluginConfig;
         if (function_exists('config')) {
             $configuredPluginConfig = config('plugin.tinywan.typephp.app', []);
             if (is_array($configuredPluginConfig)) {
-                $pluginConfig = $configuredPluginConfig;
+                $pluginConfig = $this->mergePluginConfig($defaultPluginConfig, $configuredPluginConfig);
             }
         }
 
@@ -279,6 +284,28 @@ class PackageCommand extends Command
 
         $output->writeln('<error>[ERROR] TypePHP build failed with exit code ' . $process->getExitCode() . '</error>');
         return Command::FAILURE;
+    }
+
+    /**
+     * Keep newly shipped list defaults when a project's published configuration
+     * predates them, while allowing scalar and associative settings to override.
+     *
+     * @param array<string, mixed> $defaults
+     * @param array<string, mixed> $configured
+     * @return array<string, mixed>
+     */
+    private function mergePluginConfig(array $defaults, array $configured): array
+    {
+        $merged = array_replace_recursive($defaults, $configured);
+        foreach (['ignore', 'runtime_resources'] as $key) {
+            $defaultList = $defaults[$key] ?? [];
+            $configuredList = $configured[$key] ?? [];
+            if (!is_array($defaultList) || !is_array($configuredList)) {
+                continue;
+            }
+            $merged[$key] = array_values(array_unique(array_merge($defaultList, $configuredList)));
+        }
+        return $merged;
     }
 
     /**

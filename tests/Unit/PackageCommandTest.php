@@ -110,3 +110,28 @@ it('resolves the builder image from the option, configuration, then fallback', f
 
     expect($method->invoke($command, null, []))->toBe('tinywan/typephp-webman-builder:v0.1.3');
 });
+
+it('keeps new packaged ignore defaults when a project has stale published configuration', function (): void {
+    $command = new \Tinywan\Typephp\Commands\PackageCommand();
+    $method = new ReflectionMethod($command, 'mergePluginConfig');
+
+    $merged = $method->invoke($command, [
+        'docker' => ['image' => 'tinywan/typephp-webman-builder:v0.1.3'],
+        'ignore' => ['vendor/carbonphp/carbon-doctrine-types'],
+        'runtime_resources' => ['plugin/saiadmin/utils/code/stub'],
+    ], [
+        'docker' => ['image' => 'tinywan/typephp-webman-builder:v0.2.1'],
+        'ignore' => ['app/model'],
+        'runtime_resources' => ['public'],
+    ]);
+
+    expect($merged['docker']['image'])->toBe('tinywan/typephp-webman-builder:v0.2.1');
+    expect($merged['ignore'])->toBe([
+        'vendor/carbonphp/carbon-doctrine-types',
+        'app/model',
+    ]);
+    expect($merged['runtime_resources'])->toBe([
+        'plugin/saiadmin/utils/code/stub',
+        'public',
+    ]);
+});
