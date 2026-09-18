@@ -3001,6 +3001,9 @@ class ProjectGenerator
         if ($sourceRel === 'plugin/saiadmin/app/cache/UserInfoCache.php') {
             return $this->patchSaiAdminUserInfoCache($content);
         }
+        if ($sourceRel === 'vendor/symfony/http-foundation/Request.php') {
+            $content = $this->stripSymfonyRequestPreloadHints($content);
+        }
         foreach (self::SWITCH_TERMINAL_REPLACEMENTS[$sourceRel] ?? [] as $search => $replacement) {
             if ($sourceRel === 'plugin/saiadmin/app/cache/ReflectionCache.php') {
                 $replacement = str_replace(
@@ -3044,6 +3047,29 @@ class ProjectGenerator
                 );
             }
             $content = str_replace($search, $replacement, $content);
+        }
+        return $content;
+    }
+
+    private function stripSymfonyRequestPreloadHints(string $content): string
+    {
+        $preloadHints = <<<'PHP'
+            // Help opcache.preload discover always-needed symbols
+            class_exists(AcceptHeader::class);
+            class_exists(FileBag::class);
+            class_exists(HeaderBag::class);
+            class_exists(HeaderUtils::class);
+            class_exists(InputBag::class);
+            class_exists(ParameterBag::class);
+            class_exists(ServerBag::class);
+
+            PHP;
+        $content = str_replace($preloadHints, '', $content, $count);
+        if ($count !== 1) {
+            throw new \RuntimeException(
+                "Symfony Request preload hints compatibility rule expected 1 match, found {$count}: "
+                . 'vendor/symfony/http-foundation/Request.php.',
+            );
         }
         return $content;
     }

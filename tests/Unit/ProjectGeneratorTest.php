@@ -2695,6 +2695,16 @@ it('keeps the Symfony forwarded host array separate from the scalar host for AOT
         $directory . '/vendor/symfony/http-foundation/Request.php',
         <<<'PHP'
 <?php
+
+// Help opcache.preload discover always-needed symbols
+class_exists(AcceptHeader::class);
+class_exists(FileBag::class);
+class_exists(HeaderBag::class);
+class_exists(HeaderUtils::class);
+class_exists(InputBag::class);
+class_exists(ParameterBag::class);
+class_exists(ServerBag::class);
+
 class Request
 {
     protected static ?array $formats = null;
@@ -2739,7 +2749,8 @@ PHP,
             ->toContain('getFormat(?string $mimeType, bool $subtypeFallback = false)')
             ->not->toContain('func_get_arg(1)')
             ->toContain('public static function resetFormatsForAot(): void')
-            ->toContain('self::$formats = null;');
+            ->toContain('self::$formats = null;')
+            ->not->toContain('class_exists(');
         expect(file_get_contents($generator->generateProjectYml([])))
             ->toContain("\n  - vendor/symfony/http-foundation/Request.php\n");
     } finally {
