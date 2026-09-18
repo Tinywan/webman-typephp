@@ -100,16 +100,23 @@ dist/
 └── runtime/                # 运行时缓存与日志目录 (logs, views)
 ```
 
-> **特点**：
-> - **无动态依赖**：不需要 `libphp.so`，不需要 `ext/*.so`，不需要 `lib/` 动态库目录，也不需要外部 `php.ini`。
-> - **超轻量容器**：可直接使用 5MB 的 `alpine:latest` 或 `scratch` 基础镜像制作 20MB 左右的生产级超轻镜像：
->   ```dockerfile
->   FROM alpine:latest
->   COPY dist /app
->   WORKDIR /app
->   EXPOSE 8787
->   CMD ["./webman-server", "start"]
->   ```
+#### 核心优势
+* **零外部依赖**：单文件全静态内嵌，无需 `libphp.so`、`ext/*.so`、`lib/` 动态库目录或外部 `php.ini`。
+* **跨发行版通用**：兼容任意 Linux x86_64 环境（Alpine, Ubuntu, Debian, CentOS, BusyBox 等）。
+* **开箱即用**：直接运行可执行文件即可启动，免去环境搭建与运维依赖。
+
+#### 极简容器化示例（可选）
+得益于纯静态链接，可直接基于仅 5MB 的官方 Alpine 基础镜像构建约 20MB 的超轻量生产镜像：
+
+```dockerfile
+FROM alpine:latest
+
+WORKDIR /app
+COPY dist /app
+
+EXPOSE 8787
+CMD ["./webman-server", "start"]
+```
 
 ---
 
@@ -136,7 +143,12 @@ dist/
 └── runtime/                # 运行时缓存与日志目录 (logs, views)
 ```
 
-`lib/` 携带构建及扩展所需的所有动态依赖库；glibc、动态加载器由目标系统提供。`build-manifest.json` 用于追踪构建，不应写入密钥、令牌或其他敏感信息。
+#### 核心优势
+* **扩展生态丰富**：可使用 Linux 发行版通过 apt/包管理器预编译的海量 `.so` 扩展，适合依赖特殊外部动态库的项目。
+* **分发维护灵活**：二进制与底层依赖库（`libphp.so` / `ext/*.so`）物理解耦，方便针对性更新。
+* **标准 glibc 兼容**：兼容 glibc 2.31+ 的任何常见 Linux 发行版（Ubuntu 20.04+, Debian 11+, RHEL 9+ 等）。
+
+---
 
 ## 🛠️ 命令
 
