@@ -8,6 +8,11 @@ final class SaiAdminProfile
 {
     public const NAME = 'saiadmin';
 
+    private const REQUIRED_COMPILED_DEPENDENCIES = [
+        'vendor/workerman/coroutine/src/Pool.php',
+        'vendor/workerman/coroutine/src/Utils/DestructionWatcher.php',
+    ];
+
     private const SUPPORTED_EXACT_VERSIONS = [
         'topthink/think-orm' => ['v3.0.34'],
         'nesbot/carbon' => ['3.13.2'],
@@ -162,8 +167,35 @@ final class SaiAdminProfile
                 if (!is_string($ignore)) {
                     return true;
                 }
+                foreach (self::REQUIRED_COMPILED_DEPENDENCIES as $file) {
+                    if ($this->matchesAny($file, [$ignore])) {
+                        return false;
+                    }
+                }
                 foreach ($businessFiles as $file) {
                     if ($this->matchesAny($file, [$ignore])) {
+                        return false;
+                    }
+                }
+                return true;
+            },
+        ));
+    }
+
+    /**
+     * @param list<mixed> $resources
+     * @return list<mixed>
+     */
+    public function filterRuntimeResources(array $resources): array
+    {
+        return array_values(array_filter(
+            $resources,
+            function (mixed $resource): bool {
+                if (!is_string($resource)) {
+                    return true;
+                }
+                foreach (self::REQUIRED_COMPILED_DEPENDENCIES as $file) {
+                    if ($this->matchesAny($file, [$resource])) {
                         return false;
                     }
                 }

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Tinywan\Typephp\Compiler\ProjectGenerator;
+use Tinywan\Typephp\Compiler\Profile\SaiAdminProfile;
 
 it('excludes optional non-Fiber coroutine backends from AOT', function (): void {
     $config = require dirname(__DIR__, 2) . '/src/config/plugin/tinywan/typephp/app.php';
@@ -17,6 +18,23 @@ it('excludes optional non-Fiber coroutine backends from AOT', function (): void 
             expect($config['ignore'])->toContain("vendor/workerman/coroutine/src/{$component}/{$backend}.php");
         }
         expect($config['ignore'])->toContain("vendor/workerman/workerman/src/Events/{$backend}.php");
+    }
+});
+
+it('does not let stale project config exclude required coroutine dependencies', function (): void {
+    $directory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'typephp-test-' . bin2hex(random_bytes(4));
+    mkdir($directory . '/plugin/saiadmin', 0777, true);
+
+    try {
+        $profile = new SaiAdminProfile($directory);
+        $stalePaths = [
+            'vendor/workerman/coroutine/src/Pool.php',
+            'vendor/workerman/coroutine/src/Utils/DestructionWatcher.php',
+        ];
+        expect($profile->filterUserIgnores($stalePaths))->toBe([])
+            ->and($profile->filterRuntimeResources($stalePaths))->toBe([]);
+    } finally {
+        removeTypephpTestDirectory($directory);
     }
 });
 

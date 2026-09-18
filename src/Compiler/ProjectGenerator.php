@@ -3508,6 +3508,9 @@ class ProjectGenerator
         if (!is_array($runtimeResources)) {
             throw new \RuntimeException('runtime_resources must be a list of project-relative paths.');
         }
+        if ($profile !== null) {
+            $runtimeResources = $profile->filterRuntimeResources($runtimeResources);
+        }
         $this->generateRuntimeResourceList(array_values($runtimeResources));
 
         $sources = [
