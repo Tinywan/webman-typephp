@@ -1,18 +1,18 @@
 # SaiAdmin AOT 支持矩阵
 
-首版只验收 Linux amd64。profile 允许稳定版 SaiAdmin `>=6.1.1 <6.2.0`
-进入候选构建，预发布版不在范围内。这个范围只是准入规则，不是对每个 `6.1.x`
-版本的无条件兼容承诺；源码结构、安装副本或锁定依赖漂移仍会失败关闭。
+首版只验收 Linux amd64。profile 不对 Webman、Workerman 或 SaiAdmin 增加版本
+白名单；依赖是否可安装由 Composer 约束决定。表中的版本是已验证记录，不代表未列出
+版本自动兼容；源码结构、安装副本或锁定依赖漂移仍会失败关闭。
 
 | 组件 | 支持/锁定版本 |
 | --- | --- |
 | PHP | 8.4.25 |
 | TypePHP Linux builder | `tinywan/typephp-linux-x64:v0.8.0@sha256:f18cac640edf52126acc1ad781f220f9fe547f7c8db925dcc38d4854f9436f90` |
-| SaiAdmin | 稳定版 `>=6.1.1 <6.2.0` |
+| SaiAdmin | profile 无额外版本门禁；已验证 `6.1.1`、`6.1.5` |
 | ThinkORM | v3.0.34 |
 | Carbon | 3.13.2 |
-| Webman framework | `fa352016aac4c9e21c8781cc127afd25ee144795` |
-| Workerman | `69bfc7765fff55bc3792560c715ae3ca8eadccb5` |
+| Webman framework | 沿用插件 Composer 约束 `^1.5.4 \|\| ^2.0 \|\| dev-master`；已验证 `v2.2.4` 和记录中的 `dev-master` |
+| Workerman | profile 无额外版本门禁；已验证 `v5.2.2` 和记录中的 `dev-master` |
 
 ## 已验证版本
 
@@ -38,8 +38,8 @@ CakePHP Core/Database/Datasource/Event/Utility `5.4.2`、League Container
 | SaiAdmin 6.1.5 第三方依赖 | CakePHP/Phinx/League Container 的安装与迁移工具依赖 TypePHP v0.8 无法有界表示的动态写法 | 作为明确登记的第三方动态运行资源随包；SaiAdmin 核心、登录、权限、模型及自有业务不得进入该清单 |
 | IP2Region / Nelexa | v3 整数槽跨类型、PSR Stream 签名不一致 | 生成返回分支和接口签名明确的 AOT 副本 |
 
-规则只匹配已记录的依赖版本和源码结构。`plugin/saiadmin` 的安装副本还必须与
-`vendor/saithink/saiadmin/src/plugin/saiadmin` 内容一致。未知版本、零命中、重复命中、
+规则匹配已记录的源码结构。`plugin/saiadmin` 的安装副本还必须与
+`vendor/saithink/saiadmin/src/plugin/saiadmin` 内容一致。未知源码结构、零命中、重复命中、
 安装副本漂移或无法证明等价的写法必须终止构建；不得改成运行时解释业务代码。
 
 ## 未承诺范围

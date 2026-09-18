@@ -11,15 +11,6 @@ final class SaiAdminProfile
     private const SUPPORTED_EXACT_VERSIONS = [
         'topthink/think-orm' => ['v3.0.34'],
         'nesbot/carbon' => ['3.13.2'],
-        'workerman/webman-framework' => ['dev-master'],
-        'workerman/workerman' => ['dev-master'],
-    ];
-
-    private const SUPPORTED_SAIADMIN_RANGE = '>=6.1.1 <6.2.0';
-
-    private const SUPPORTED_REFERENCES = [
-        'workerman/webman-framework' => 'fa352016aac4c9e21c8781cc127afd25ee144795',
-        'workerman/workerman' => '69bfc7765fff55bc3792560c715ae3ca8eadccb5',
     ];
 
     public function __construct(private readonly string $basePath)
@@ -43,32 +34,15 @@ final class SaiAdminProfile
         }
 
         $installed = [];
-        $references = [];
         foreach (array_merge($lock['packages'] ?? [], $lock['packages-dev'] ?? []) as $package) {
             if (is_array($package) && is_string($package['name'] ?? null) && is_string($package['version'] ?? null)) {
                 $installed[$package['name']] = $package['version'];
-                $reference = $package['source']['reference'] ?? null;
-                if (is_string($reference)) {
-                    $references[$package['name']] = $reference;
-                }
             }
         }
 
         $saiAdminVersion = $installed['saithink/saiadmin'] ?? null;
         if ($saiAdminVersion === null) {
             throw new \RuntimeException('The saiadmin profile requires saithink/saiadmin.');
-        }
-        $normalizedSaiAdminVersion = ltrim($saiAdminVersion, 'v');
-        if (
-            preg_match('/^6\.1\.\d+$/', $normalizedSaiAdminVersion) !== 1
-            ||
-            version_compare($normalizedSaiAdminVersion, '6.1.1', '<')
-            || version_compare($normalizedSaiAdminVersion, '6.2.0', '>=')
-        ) {
-            throw new \RuntimeException(
-                "Unsupported saithink/saiadmin version {$saiAdminVersion}; "
-                . 'supported candidate range: ' . self::SUPPORTED_SAIADMIN_RANGE . '.',
-            );
         }
         $this->assertInstalledSaiAdminMatchesPackage();
 
@@ -83,17 +57,6 @@ final class SaiAdminProfile
                 );
             }
         }
-        foreach (self::SUPPORTED_REFERENCES as $package => $expected) {
-            $actual = $references[$package] ?? null;
-            if ($actual !== $expected) {
-                throw new \RuntimeException(
-                    "Unsupported {$package} source reference "
-                    . ($actual ?? 'missing')
-                    . "; supported: {$expected}.",
-                );
-            }
-        }
-
         return array_intersect_key(
             $installed,
             ['saithink/saiadmin' => true] + array_fill_keys(array_keys(self::SUPPORTED_EXACT_VERSIONS), true),

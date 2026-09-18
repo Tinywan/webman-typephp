@@ -27,6 +27,8 @@ function createSaiAdminProfileFixture(
     string $directory,
     string $ormVersion = 'v3.0.34',
     string $saiAdminVersion = '6.1.1',
+    string $webmanVersion = 'dev-master',
+    string $workermanVersion = 'dev-master',
 ): void
 {
     foreach ([
@@ -91,13 +93,11 @@ function createSaiAdminProfileFixture(
             ['name' => 'nesbot/carbon', 'version' => '3.13.2'],
             [
                 'name' => 'workerman/webman-framework',
-                'version' => 'dev-master',
-                'source' => ['reference' => 'fa352016aac4c9e21c8781cc127afd25ee144795'],
+                'version' => $webmanVersion,
             ],
             [
                 'name' => 'workerman/workerman',
-                'version' => 'dev-master',
-                'source' => ['reference' => '69bfc7765fff55bc3792560c715ae3ca8eadccb5'],
+                'version' => $workermanVersion,
             ],
         ],
     ], JSON_THROW_ON_ERROR));
@@ -114,8 +114,6 @@ it('discovers SaiAdmin and installed plugin business sources and resources', fun
                 'saithink/saiadmin' => '6.1.1',
                 'topthink/think-orm' => 'v3.0.34',
                 'nesbot/carbon' => '3.13.2',
-                'workerman/webman-framework' => 'dev-master',
-                'workerman/workerman' => 'dev-master',
             ])
             ->and($profile->sources())
             ->toContain('support', 'plugin/saiadmin', 'plugin/example/app')
@@ -152,21 +150,20 @@ it('discovers SaiAdmin and installed plugin business sources and resources', fun
     }
 });
 
-it('accepts the bounded SaiAdmin 6.1 release line and rejects its boundaries', function (): void {
+it('does not reject SaiAdmin by version before applying structural compatibility rules', function (): void {
     $directory = sys_get_temp_dir() . '/typephp-saiadmin-profile-' . bin2hex(random_bytes(4));
 
     try {
         createSaiAdminProfileFixture($directory, saiAdminVersion: '6.1.5');
         expect((new SaiAdminProfile($directory))->assertSupported()['saithink/saiadmin'])->toBe('6.1.5');
 
-        foreach (['6.1.0', '6.1.6-beta.1', '6.2.0'] as $unsupported) {
+        foreach (['6.1.0', '6.1.6-beta.1', '6.2.0'] as $version) {
             $lock = file_get_contents($directory . '/composer.lock');
             file_put_contents(
                 $directory . '/composer.lock',
-                str_replace('6.1.5', $unsupported, (string) $lock),
+                str_replace('6.1.5', $version, (string) $lock),
             );
-            expect(fn(): array => (new SaiAdminProfile($directory))->assertSupported())
-                ->toThrow(RuntimeException::class, 'supported candidate range: >=6.1.1 <6.2.0');
+            expect((new SaiAdminProfile($directory))->assertSupported()['saithink/saiadmin'])->toBe($version);
             file_put_contents($directory . '/composer.lock', (string) $lock);
         }
     } finally {
@@ -190,6 +187,21 @@ it('rejects a composer version that does not match the installed SaiAdmin source
     }
 });
 
+it('uses the upstream Composer constraint without an extra Webman runtime gate', function (): void {
+    $directory = sys_get_temp_dir() . '/typephp-saiadmin-profile-' . bin2hex(random_bytes(4));
+
+    try {
+        createSaiAdminProfileFixture($directory, webmanVersion: 'v2.2.4', workermanVersion: 'v5.2.2');
+        expect((new SaiAdminProfile($directory))->assertSupported())->toBe([
+            'saithink/saiadmin' => '6.1.1',
+            'topthink/think-orm' => 'v3.0.34',
+            'nesbot/carbon' => '3.13.2',
+        ]);
+    } finally {
+        removeSaiAdminProfileFixture($directory);
+    }
+});
+
 it('fails closed on unsupported dependency drift or excluded business PHP', function (): void {
     $directory = sys_get_temp_dir() . '/typephp-saiadmin-profile-' . bin2hex(random_bytes(4));
     createSaiAdminProfileFixture($directory, 'v4.0.0');
@@ -199,35 +211,11 @@ it('fails closed on unsupported dependency drift or excluded business PHP', func
         expect(fn(): array => $profile->assertSupported())
             ->toThrow(RuntimeException::class, 'Unsupported topthink/think-orm version');
 
-        $validLock = json_encode([
-            'packages' => [
-                ['name' => 'saithink/saiadmin', 'version' => '6.1.1'],
-                ['name' => 'topthink/think-orm', 'version' => 'v3.0.34'],
-                ['name' => 'nesbot/carbon', 'version' => '3.13.2'],
-                [
-                    'name' => 'workerman/webman-framework',
-                    'version' => 'dev-master',
-                    'source' => ['reference' => 'fa352016aac4c9e21c8781cc127afd25ee144795'],
-                ],
-                [
-                    'name' => 'workerman/workerman',
-                    'version' => 'dev-master',
-                    'source' => ['reference' => '69bfc7765fff55bc3792560c715ae3ca8eadccb5'],
-                ],
-            ],
-        ], JSON_THROW_ON_ERROR);
+        $lock = (string) file_get_contents($directory . '/composer.lock');
         file_put_contents(
             $directory . '/composer.lock',
-            str_replace(
-                'fa352016aac4c9e21c8781cc127afd25ee144795',
-                '0000000000000000000000000000000000000000',
-                $validLock,
-            ),
+            str_replace('v4.0.0', 'v3.0.34', $lock),
         );
-        expect(fn(): array => (new SaiAdminProfile($directory))->assertSupported())
-            ->toThrow(RuntimeException::class, 'Unsupported workerman/webman-framework source reference');
-
-        file_put_contents($directory . '/composer.lock', $validLock);
         $profile = new SaiAdminProfile($directory);
         expect(fn(): array => $profile->writeCoverageManifest(
             ['app', 'support', 'plugin/saiadmin', 'plugin/example/app'],

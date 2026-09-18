@@ -155,7 +155,11 @@ return [
 
 ### SaiAdmin profile
 
-`--profile=saiadmin` 要求存在 `plugin/saiadmin` 和有效的 `composer.lock`。当前允许稳定版 SaiAdmin `>=6.1.1 <6.2.0` 进入候选构建；预发布版、`6.1.0` 及 `6.2.0+` 会在进入 Docker 编译前失败。版本范围不是无条件兼容承诺：每次构建仍会校验 ThinkORM `v3.0.34`、Carbon `3.13.2`、锁定的 Webman/Workerman 提交、Composer 安装源码一致性和每条兼容规则的预期命中数。
+`--profile=saiadmin` 要求存在 `plugin/saiadmin` 和有效的 `composer.lock`。profile
+沿用本插件 Composer 对 Webman 的版本约束，不再额外设置 Webman、Workerman 或
+SaiAdmin 版本白名单。安全边界由 Composer 可安装约束、SaiAdmin 安装源码一致性、
+兼容规则预期命中数和完整编译共同保证；源码结构漂移会失败关闭。当前仍会精确校验
+ThinkORM `v3.0.34` 和 Carbon `3.13.2`，因为相关兼容规则尚未完成跨版本验证。
 
 已验证版本分层如下：SaiAdmin `6.1.1` 已完成 Linux amd64 编译、打包和隔离数据库业务验收；`6.1.5` 已完成 Linux amd64 完整编译与 portable-dir 校验，数据库业务验收尚未补齐。精确依赖组合和证据边界见 [支持矩阵](docs/saiadmin-aot/docs/compatibility-matrix.md) 与 [验证证据](docs/saiadmin-aot/docs/verification-evidence.md)。
 

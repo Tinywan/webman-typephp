@@ -4,6 +4,10 @@
 
 记录当前提交和工作树状态，PHP、Composer、Docker、Webman、Workerman、TypePHP、builder 与扩展版本，以及普通 PHP 回归和原始编译 Fatal。不要运行安装器或数据库初始化。
 
+profile 不额外限制 Webman、Workerman 或 SaiAdmin 版本，不要为了通过 profile 检查
+切换项目依赖。先保留项目现有 Composer 锁定组合；若兼容规则因源码结构变化失败，
+再以实际编译错误扩展规则并补充验证记录。
+
 ## 2. 划分输入
 
 - 必须编译：所有自有业务 PHP。
