@@ -308,6 +308,7 @@ fi
 chmod +x "$SCRIPT_DIR/webman-server" 2>/dev/null || true
 exec "$SCRIPT_DIR/webman-server" "$@"
 SCRIPT
+fi
 
 # 6. 复制运行时业务资源并确保 runtime 目录
 for resource in config public; do
