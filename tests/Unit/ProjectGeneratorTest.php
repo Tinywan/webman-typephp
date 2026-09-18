@@ -530,6 +530,60 @@ it('flattens namespaced fast-route functions guards into AOT sources', function 
     }
 });
 
+it('flattens CakePHP function guards before converting its namespace', function (): void {
+    $directory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'typephp-test-' . bin2hex(random_bytes(4));
+    mkdir($directory . '/vendor/cakephp/core', 0777, true);
+    file_put_contents($directory . '/vendor/cakephp/core/functions.php', <<<'PHP'
+        <?php
+
+        if (!defined('DS')) {
+            /**
+             * Defines DS as short form of DIRECTORY_SEPARATOR.
+             */
+            define('DS', DIRECTORY_SEPARATOR);
+        }
+
+        if (!defined('CAKE_DATE_RFC7231')) {
+            define('CAKE_DATE_RFC7231', 'D, d M Y H:i:s \G\M\T');
+        }
+
+        namespace Cake\Core;
+
+        if (!function_exists('Cake\Core\pathCombine')) {
+            function pathCombine(array $parts, ?bool $trailing = null): string
+            {
+                return implode(DS, $parts);
+            }
+        }
+
+        if (!function_exists('Cake\Core\h')) {
+            function h(mixed $text): mixed
+            {
+                return $text;
+            }
+        }
+        PHP);
+
+    try {
+        $generator = new ProjectGenerator($directory);
+        $generated = $generator->generateFlattenedSources();
+
+        expect($generated)->toContain('.typephp/build/cakephp-core-functions.php');
+
+        $flattened = (string) file_get_contents(
+            $directory . '/.typephp/build/cakephp-core-functions.php',
+        );
+        expect($flattened)
+            ->toContain("namespace {\nconst DS = DIRECTORY_SEPARATOR;")
+            ->toContain('namespace Cake\Core {')
+            ->toContain('function pathCombine(array $parts, ?bool $trailing = null): string')
+            ->toContain('function h(mixed $text): mixed')
+            ->not->toContain('function_exists');
+    } finally {
+        removeTypephpTestDirectory($directory);
+    }
+});
+
 it('discovers and flattens first-party plugin function guards', function (): void {
     $directory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'typephp-test-' . bin2hex(random_bytes(4));
     mkdir($directory . '/app', 0777, true);

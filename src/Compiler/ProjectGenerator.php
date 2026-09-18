@@ -2514,6 +2514,7 @@ class ProjectGenerator
                 }
                 PHP;
             $content = str_replace($constantBlocks, '', $content, $constantCount);
+            $content = $this->flattenGuardedSource($content);
             $content = str_replace(
                 'namespace Cake\Core;',
                 "namespace {\nconst DS = DIRECTORY_SEPARATOR;\n"
