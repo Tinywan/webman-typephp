@@ -5,6 +5,7 @@ readonly real_workspace=/workspace
 readonly output_dir="${TYPEPHP_OUTPUT_DIR:-dist}"
 readonly output_name="${TYPEPHP_OUTPUT_NAME:-webman-server}"
 readonly force="${TYPEPHP_FORCE:-0}"
+readonly is_static="${TYPEPHP_STATIC:-0}"
 readonly build_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 
 validate_relative_path() {
@@ -120,8 +121,13 @@ jobs="$(nproc 2>/dev/null || echo 2)"
 [[ "$jobs" -lt 1 ]] && jobs=1
 sed -i "s/^job:.*/job: ${jobs}/" "$project_file"
 
-echo "[INFO] Compiling Linux x86_64 glibc binary (job=${jobs})..."
-"${tpc[@]}" "$project_file" --no-progress
+if [[ "$is_static" = "1" ]]; then
+    echo "[INFO] Compiling Linux x86_64 full-static binary with Clang (job=${jobs})..."
+    "${tpc[@]}" "$project_file" --full-static --compiler=clang --no-progress
+else
+    echo "[INFO] Compiling Linux x86_64 glibc binary (job=${jobs})..."
+    "${tpc[@]}" "$project_file" --no-progress
+fi
 
 normalized_output="$(dirname -- "$project_output")/$(basename -- "$project_output" | tr '-' '_')"
 if ! validate_relative_path "$normalized_output"; then
@@ -139,73 +145,103 @@ if [[ ! -f "$compiled_bin" ]]; then
     exit 1
 fi
 
-if ! ldd_output="$(LD_LIBRARY_PATH=/opt/typephp/vendor/swoole/phpx/lib:/usr/lib ldd "$compiled_bin" 2>&1)"; then
-    echo "[ERROR] ldd failed for '$compiled_bin': $ldd_output" >&2
-    exit 1
-fi
-if grep -q 'not found' <<<"$ldd_output"; then
-    echo "[ERROR] Unresolved runtime library: $ldd_output" >&2
-    exit 1
-fi
-
-mkdir -p "$stage_dir/lib"
-trap cleanup_stage_on_failure EXIT
-install -m 0755 "$compiled_bin" "$stage_dir/webman-server.bin"
-
-# 1. 自动扫描并打包 PHP 扩展模块 (.so) 到 dist/ext
-mkdir -p "$stage_dir/ext"
-php_ext_dir="$(php-config --extension-dir 2>/dev/null || echo '/usr/lib/php/20240924')"
-if [[ -d "$php_ext_dir" ]]; then
-    echo "[INFO] Copying PHP extensions from $php_ext_dir to dist/ext/ ..."
-    cp -f "$php_ext_dir"/*.so "$stage_dir/ext/" 2>/dev/null || true
-fi
-
-# 2. 自动通过 ldd 探测并打包所有程序、PHP 核心库与全部扩展模块的底层共享库
-mkdir -p "$stage_dir/lib"
-for bin_or_lib in "$stage_dir/webman-server.bin" "$stage_dir/lib"/*.so* "$stage_dir/ext"/*.so; do
-    if [[ -f "$bin_or_lib" ]]; then
-        mapfile -t found_libs < <(ldd "$bin_or_lib" 2>/dev/null | awk '/=> \// { print $3 }')
-        for libpath in "${found_libs[@]}"; do
-            if [[ -f "$libpath" ]]; then
-                libname="$(basename "$libpath")"
-                if is_platform_library "$libname"; then
-                    continue
-                fi
-                if [[ ! -f "$stage_dir/lib/$libname" ]]; then
-                    cp -L "$libpath" "$stage_dir/lib/$libname" || true
-                fi
-            fi
-        done
+if [[ "$is_static" = "1" ]]; then
+    echo "[INFO] Packaging full-static single binary..."
+    trap cleanup_stage_on_failure EXIT
+    install -m 0755 "$compiled_bin" "$stage_dir/webman-server"
+    if command -v strip &>/dev/null; then
+        strip --strip-all "$stage_dir/webman-server" 2>/dev/null || true
     fi
-done
 
-# 确保核心运行时动态库存在，并复制到根目录和 lib/ 目录
-for required_library in 'libphpx.so*' 'libphp.so*'; do
-    found_lib="$(find /opt /usr "$stage_dir/lib" -name "$required_library" -type f 2>/dev/null | head -n 1 || true)"
-    if [[ -n "$found_lib" && -f "$found_lib" ]]; then
-        libname="$(basename "$found_lib")"
-        clean_libname="${libname%%.*}.so"
-        cp -L "$found_lib" "$stage_dir/$clean_libname" || true
-        cp -L "$found_lib" "$stage_dir/lib/$libname" || true
-    else
-        echo "[ERROR] Required library $required_library not found in /opt or /usr!" >&2
+    # 生成全静态标准启动脚本 start.sh
+    install -m 0755 /dev/stdin "$stage_dir/start.sh" <<'SCRIPT'
+#!/usr/bin/env bash
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+if [ ! -f "$SCRIPT_DIR/webman-server" ]; then
+    echo "[ERROR] webman-server executable not found in $SCRIPT_DIR!"
+    exit 1
+fi
+
+chmod +x "$SCRIPT_DIR/webman-server" 2>/dev/null || true
+exec "$SCRIPT_DIR/webman-server" "$@"
+SCRIPT
+
+    if command -v file &>/dev/null; then
+        echo "[INFO] Verifying static binary ELF format:"
+        file "$stage_dir/webman-server" || true
+    fi
+else
+    if ! ldd_output="$(LD_LIBRARY_PATH=/opt/typephp/vendor/swoole/phpx/lib:/usr/lib ldd "$compiled_bin" 2>&1)"; then
+        echo "[ERROR] ldd failed for '$compiled_bin': $ldd_output" >&2
         exit 1
     fi
-done
+    if grep -q 'not found' <<<"$ldd_output"; then
+        echo "[ERROR] Unresolved runtime library: $ldd_output" >&2
+        exit 1
+    fi
 
-# 3. 修复可执行程序和扩展的 RPATH（如果有 patchelf）
-if command -v patchelf &> /dev/null; then
-    patchelf --set-rpath '$ORIGIN:$ORIGIN/lib' "$stage_dir/webman-server.bin" 2>/dev/null || true
-    for solib in "$stage_dir"/*.so "$stage_dir"/lib/*.so*; do
-        [[ -f "$solib" ]] && patchelf --set-rpath '$ORIGIN:$ORIGIN/lib' "$solib" 2>/dev/null || true
-    done
-    for extsolib in "$stage_dir"/ext/*.so; do
-        [[ -f "$extsolib" ]] && patchelf --set-rpath '$ORIGIN/../lib:$ORIGIN:$ORIGIN/..' "$extsolib" 2>/dev/null || true
-    done
-fi
+    mkdir -p "$stage_dir/lib"
+    trap cleanup_stage_on_failure EXIT
+    install -m 0755 "$compiled_bin" "$stage_dir/webman-server.bin"
 
-# 4. 生成自包含纯净 php.ini
-cat > "$stage_dir/php.ini" << 'EOF'
+    # 1. 自动扫描并打包 PHP 扩展模块 (.so) 到 dist/ext
+    mkdir -p "$stage_dir/ext"
+    php_ext_dir="$(php-config --extension-dir 2>/dev/null || echo '/usr/lib/php/20240924')"
+    if [[ -d "$php_ext_dir" ]]; then
+        echo "[INFO] Copying PHP extensions from $php_ext_dir to dist/ext/ ..."
+        cp -f "$php_ext_dir"/*.so "$stage_dir/ext/" 2>/dev/null || true
+    fi
+
+    # 2. 自动通过 ldd 探测并打包所有程序、PHP 核心库与全部扩展模块的底层共享库
+    mkdir -p "$stage_dir/lib"
+    for bin_or_lib in "$stage_dir/webman-server.bin" "$stage_dir/lib"/*.so* "$stage_dir/ext"/*.so; do
+        if [[ -f "$bin_or_lib" ]]; then
+            mapfile -t found_libs < <(ldd "$bin_or_lib" 2>/dev/null | awk '/=> \// { print $3 }')
+            for libpath in "${found_libs[@]}"; do
+                if [[ -f "$libpath" ]]; then
+                    libname="$(basename "$libpath")"
+                    if is_platform_library "$libname"; then
+                        continue
+                    fi
+                    if [[ ! -f "$stage_dir/lib/$libname" ]]; then
+                        cp -L "$libpath" "$stage_dir/lib/$libname" || true
+                    fi
+                fi
+            done
+        fi
+    done
+
+    # 确保核心运行时动态库存在，并复制到根目录和 lib/ 目录
+    for required_library in 'libphpx.so*' 'libphp.so*'; do
+        found_lib="$(find /opt /usr "$stage_dir/lib" -name "$required_library" -type f 2>/dev/null | head -n 1 || true)"
+        if [[ -n "$found_lib" && -f "$found_lib" ]]; then
+            libname="$(basename "$found_lib")"
+            clean_libname="${libname%%.*}.so"
+            cp -L "$found_lib" "$stage_dir/$clean_libname" || true
+            cp -L "$found_lib" "$stage_dir/lib/$libname" || true
+        else
+            echo "[ERROR] Required library $required_library not found in /opt or /usr!" >&2
+            exit 1
+        fi
+    done
+
+    # 3. 修复可执行程序和扩展的 RPATH（如果有 patchelf）
+    if command -v patchelf &> /dev/null; then
+        patchelf --set-rpath '$ORIGIN:$ORIGIN/lib' "$stage_dir/webman-server.bin" 2>/dev/null || true
+        for solib in "$stage_dir"/*.so "$stage_dir"/lib/*.so*; do
+            [[ -f "$solib" ]] && patchelf --set-rpath '$ORIGIN:$ORIGIN/lib' "$solib" 2>/dev/null || true
+        done
+        for extsolib in "$stage_dir"/ext/*.so; do
+            [[ -f "$extsolib" ]] && patchelf --set-rpath '$ORIGIN/../lib:$ORIGIN:$ORIGIN/..' "$extsolib" 2>/dev/null || true
+        done
+    fi
+
+    # 4. 生成自包含纯净 php.ini
+    cat > "$stage_dir/php.ini" << 'EOF'
 output_buffering=0
 implicit_flush=1
 memory_limit=4G
@@ -231,18 +267,18 @@ extension=sockets.so
 extension=event.so
 EOF
 
-# 若 ext/ 目录下没有对应扩展 .so，则注释该行以防产生 Warning
-while IFS= read -r line || [[ -n "$line" ]]; do
-    if echo "$line" | grep -q "^extension="; then
-        ext_file=$(echo "$line" | cut -d'=' -f2)
-        if [[ ! -f "$stage_dir/ext/$ext_file" ]]; then
-            sed -i "s/^extension=$ext_file$/; extension=$ext_file/" "$stage_dir/php.ini"
+    # 若 ext/ 目录下没有对应扩展 .so，则注释该行以防产生 Warning
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if echo "$line" | grep -q "^extension="; then
+            ext_file=$(echo "$line" | cut -d'=' -f2)
+            if [[ ! -f "$stage_dir/ext/$ext_file" ]]; then
+                sed -i "s/^extension=$ext_file$/; extension=$ext_file/" "$stage_dir/php.ini"
+            fi
         fi
-    fi
-done < "$stage_dir/php.ini"
+    done < "$stage_dir/php.ini"
 
-# 5. 生成标准可移植启动包装脚本 webman-server 与 start.sh
-install -m 0755 /dev/stdin "$stage_dir/webman-server" <<'SCRIPT'
+    # 5. 生成标准可移植启动包装脚本 webman-server 与 start.sh
+    install -m 0755 /dev/stdin "$stage_dir/webman-server" <<'SCRIPT'
 #!/usr/bin/env sh
 set -eu
 
@@ -254,7 +290,7 @@ export LD_LIBRARY_PATH="$SCRIPT_DIR:$SCRIPT_DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRA
 exec "$SCRIPT_DIR/webman-server.bin" "$@"
 SCRIPT
 
-install -m 0755 /dev/stdin "$stage_dir/start.sh" <<'SCRIPT'
+    install -m 0755 /dev/stdin "$stage_dir/start.sh" <<'SCRIPT'
 #!/usr/bin/env bash
 set -e
 

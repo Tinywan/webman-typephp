@@ -13,6 +13,7 @@ return [
     'docker' => [
         'enabled' => true,
         'image' => 'tinywan/typephp-webman-builder:v0.2.1',
+        'static_image' => 'tinywan/typephp-webman-builder-static:v0.2.1',
     ],
     // 默认输出配置
     'build' => [

@@ -49,9 +49,12 @@ php webman typephp:package --force
 
 # 强制使用最新 TypePHP stub 重置 main.php 入口（原有 main.php 会自动备份为 main.php.bak）
 php webman typephp:package --refresh-main
+
+# 构建全静态单文件可执行产物 (零动态库依赖，单二进制)
+php webman typephp:package --static
 ```
 
-默认 builder 为 `tinywan/typephp-webman-builder:v0.2.1`。编译在 Docker 中完成，宿主机不需要 C++、Clang 或 TypePHP 编译器。
+默认 builder 为 `tinywan/typephp-webman-builder:v0.2.1`（动态便携包）；全静态模式使用 `tinywan/typephp-webman-builder-static:v0.2.1`。编译在 Docker 中完成，宿主机不需要 C++、Clang 或 TypePHP 编译器。
 
 ### 4. 启动产物
 
@@ -104,6 +107,7 @@ dist/
 | 命令 | 说明 |
 | --- | --- |
 | `php webman typephp:package` | 使用默认 builder 构建 Linux portable-dir |
+| `php webman typephp:package --static` | 构建全静态单文件可执行二进制（零外部动态库依赖） |
 | `php webman typephp:package --force` | 覆盖已有输出，并保留旧目录备份 |
 | `php webman typephp:package --refresh-main` | 强制从最新官方 stub 刷新 `main.php`（旧文件自动备份） |
 | `php webman typephp:package --image=...` | 使用指定且经过验证的 Docker 镜像 |
@@ -120,6 +124,7 @@ return [
     'docker' => [
         'enabled' => true,
         'image' => 'tinywan/typephp-webman-builder:v0.2.1',
+        'static_image' => 'tinywan/typephp-webman-builder-static:v0.2.1',
     ],
     'build' => [
         'output_name' => 'webman-server',

@@ -1,0 +1,10 @@
+FROM tinywan/typephp-linux-x64-static:v0.9.0@sha256:9f87e319a4f0a32d72c7204850a0629c961c561152145fc547c2a66d754e2dfb
+
+LABEL org.opencontainers.image.title="TypePHP Webman Static Builder"
+LABEL org.opencontainers.image.description="Linux x86_64 Alpine musl full-static single binary builder"
+
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod 0755 /entrypoint.sh
+
+WORKDIR /workspace
+ENTRYPOINT ["/entrypoint.sh"]

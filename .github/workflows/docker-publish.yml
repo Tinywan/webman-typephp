@@ -57,3 +57,22 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: mode=max
           sbom: true
+      - uses: docker/metadata-action@v6
+        id: meta-static
+        with:
+          images: tinywan/typephp-webman-builder-static
+          tags: |
+            type=ref,event=tag
+            type=raw,value=${{ inputs.version }},enable=${{ github.event_name == 'workflow_dispatch' }}
+      - uses: docker/build-push-action@v7
+        with:
+          context: ./docker
+          file: ./docker/Dockerfile.static
+          platforms: linux/amd64
+          push: ${{ steps.version.outputs.push }}
+          tags: ${{ steps.meta-static.outputs.tags }}
+          labels: ${{ steps.meta-static.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: mode=max
+          sbom: true

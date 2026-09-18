@@ -20,6 +20,7 @@ use Tinywan\Typephp\Compiler\ProjectGenerator;
 class PackageCommand extends Command
 {
     private const DEFAULT_BUILDER_IMAGE = 'tinywan/typephp-webman-builder:v0.2.1';
+    private const DEFAULT_STATIC_BUILDER_IMAGE = 'tinywan/typephp-webman-builder-static:v0.2.1';
 
     protected static $defaultName = 'typephp:package';
     protected static $defaultDescription = 'Build Webman project into a Linux x86_64 portable-dir using TypePHP Docker builder.';
@@ -30,6 +31,12 @@ class PackageCommand extends Command
             ->setName('typephp:package')
             ->setDescription('Build Webman project into a Linux x86_64 portable-dir using TypePHP Docker builder')
             ->addOption('image', null, InputOption::VALUE_REQUIRED, 'Docker builder image reference', null)
+            ->addOption(
+                'static',
+                's',
+                InputOption::VALUE_NONE,
+                'Build fully-static single binary (zero shared library dependencies)',
+            )
             ->addOption(
                 'output-dir',
                 null,
@@ -62,8 +69,13 @@ class PackageCommand extends Command
             }
         }
 
+        $isStatic = (bool) $input->getOption('static');
         $optionImage = $input->getOption('image');
-        $image = $this->resolveBuilderImage(is_string($optionImage) ? $optionImage : null, $pluginConfig);
+        $image = $this->resolveBuilderImage(
+            is_string($optionImage) ? $optionImage : null,
+            $pluginConfig,
+            $isStatic,
+        );
         $outputDir = trim((string) $input->getOption('output-dir'), '/\\');
         $outputName = (string) $input->getOption('output-name');
         $force = (bool) $input->getOption('force');
@@ -211,6 +223,8 @@ class PackageCommand extends Command
             'TYPEPHP_OUTPUT_NAME=' . $outputName,
             '-e',
             'TYPEPHP_FORCE=' . ($force ? '1' : '0'),
+            '-e',
+            'TYPEPHP_STATIC=' . ($isStatic ? '1' : '0'),
             $image,
         ];
 
@@ -220,7 +234,8 @@ class PackageCommand extends Command
         });
 
         if ($process->isSuccessful()) {
-            $output->writeln("<info>🎉 Successfully built portable-dir: {$outputDir}/{$outputName}</info>");
+            $productType = $isStatic ? 'full-static binary' : 'portable-dir';
+            $output->writeln("<info>🎉 Successfully built {$productType}: {$outputDir}/{$outputName}</info>");
             $output->writeln("<info>Run command: cd $outputDir && ./start.sh start</info>");
 
             // 净化 dist/config：把 `Phar::CONST` 类常量替换为等值整数，避免宿主运行时
@@ -267,7 +282,7 @@ class PackageCommand extends Command
     /**
      * @param array<array-key, mixed> $pluginConfig
      */
-    private function resolveBuilderImage(?string $optionImage, array $pluginConfig): string
+    private function resolveBuilderImage(?string $optionImage, array $pluginConfig, bool $isStatic = false): string
     {
         if ($optionImage !== null) {
             return $optionImage;
@@ -275,11 +290,16 @@ class PackageCommand extends Command
 
         $dockerConfig = $pluginConfig['docker'] ?? null;
         if (!is_array($dockerConfig)) {
-            return self::DEFAULT_BUILDER_IMAGE;
+            return $isStatic ? self::DEFAULT_STATIC_BUILDER_IMAGE : self::DEFAULT_BUILDER_IMAGE;
         }
 
-        $configuredImage = $dockerConfig['image'] ?? null;
-        return is_string($configuredImage) ? $configuredImage : self::DEFAULT_BUILDER_IMAGE;
+        $key = $isStatic ? 'static_image' : 'image';
+        $configuredImage = $dockerConfig[$key] ?? null;
+        if (is_string($configuredImage)) {
+            return $configuredImage;
+        }
+
+        return $isStatic ? self::DEFAULT_STATIC_BUILDER_IMAGE : self::DEFAULT_BUILDER_IMAGE;
     }
 
     /**

@@ -7,6 +7,7 @@ it('rejects illegal output names or invalid paths', function (): void {
     expect($command->getName())->toBe('typephp:package');
     expect($command->getDefinition()->hasOption('force'))->toBeTrue();
     expect($command->getDefinition()->hasOption('image'))->toBeTrue();
+    expect($command->getDefinition()->hasOption('static'))->toBeTrue();
     expect($command->getDefinition()->hasOption('output-dir'))->toBeTrue();
     expect($command->getDefinition()->hasOption('output-name'))->toBeTrue();
     expect($command->getDefinition()->hasOption('refresh-main'))->toBeTrue();
@@ -18,7 +19,7 @@ it('leaves the image option unset so configuration can supply it', function (): 
     expect($command->getDefinition()->getOption('image')->getDefault())->toBeNull();
 });
 
-it('ships the v0.2.1 builder image in the plugin configuration', function (): void {
+it('ships the v0.2.1 builder images in the plugin configuration', function (): void {
     $pluginConfig = require dirname(__DIR__, 2) . '/src/config/plugin/tinywan/typephp/app.php';
     if (!is_array($pluginConfig)) {
         throw new RuntimeException('Plugin configuration must be an array.');
@@ -30,6 +31,7 @@ it('ships the v0.2.1 builder image in the plugin configuration', function (): vo
     }
 
     expect($dockerConfig['image'] ?? null)->toBe('tinywan/typephp-webman-builder:v0.2.1');
+    expect($dockerConfig['static_image'] ?? null)->toBe('tinywan/typephp-webman-builder-static:v0.2.1');
 });
 
 it('resolves the builder image from the option, configuration, then fallback', function (): void {
@@ -45,4 +47,11 @@ it('resolves the builder image from the option, configuration, then fallback', f
     ]))->toBe('registry.example/configured:v1');
 
     expect($method->invoke($command, null, []))->toBe('tinywan/typephp-webman-builder:v0.2.1');
+
+    // Static mode resolution
+    expect($method->invoke($command, null, [
+        'docker' => ['static_image' => 'registry.example/static:v1'],
+    ], true))->toBe('registry.example/static:v1');
+
+    expect($method->invoke($command, null, [], true))->toBe('tinywan/typephp-webman-builder-static:v0.2.1');
 });
