@@ -3772,6 +3772,9 @@ class ProjectGenerator
         } elseif (isset($extraConfig['ignore']) && is_array($extraConfig['ignore'])) {
             $userIgnores = $extraConfig['ignore'];
         }
+        if ($profile !== null) {
+            $userIgnores = $profile->filterUserIgnores($userIgnores);
+        }
         $ignores = array_values(array_unique(array_merge(
             $mandatoryIgnores,
             $profile?->resourceIgnores() ?? [],

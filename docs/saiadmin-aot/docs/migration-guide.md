@@ -8,6 +8,9 @@ profile 不额外限制 Webman、Workerman 或 SaiAdmin 版本，不要为了通
 切换项目依赖。先保留项目现有 Composer 锁定组合；若兼容规则因源码结构变化失败，
 再以实际编译错误扩展规则并补充验证记录。
 
+旧版配置中排除 `app/model`、`support` 等业务源码目录的规则会由 SaiAdmin profile
+自动移除；这些 PHP 即使暂未被引用也必须进入 AOT，不应通过删除文件绕过覆盖检查。
+
 ## 2. 划分输入
 
 - 必须编译：所有自有业务 PHP。

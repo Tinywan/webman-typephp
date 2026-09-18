@@ -150,6 +150,29 @@ final class SaiAdminProfile
     }
 
     /**
+     * @param list<mixed> $ignores
+     * @return list<mixed>
+     */
+    public function filterUserIgnores(array $ignores): array
+    {
+        $businessFiles = $this->businessFiles();
+        return array_values(array_filter(
+            $ignores,
+            function (mixed $ignore) use ($businessFiles): bool {
+                if (!is_string($ignore)) {
+                    return true;
+                }
+                foreach ($businessFiles as $file) {
+                    if ($this->matchesAny($file, [$ignore])) {
+                        return false;
+                    }
+                }
+                return true;
+            },
+        ));
+    }
+
+    /**
      * @param list<string> $sources
      * @param list<string> $ignores
      * @param array<string, string> $generatedSources

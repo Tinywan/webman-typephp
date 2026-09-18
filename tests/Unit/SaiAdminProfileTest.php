@@ -33,6 +33,7 @@ function createSaiAdminProfileFixture(
 {
     foreach ([
         'app/controller',
+        'app/model',
         'support',
         'plugin/saiadmin/app/controller',
         'vendor/saithink/saiadmin/src/plugin/saiadmin/app/controller',
@@ -47,6 +48,7 @@ function createSaiAdminProfileFixture(
     }
     foreach ([
         'app/controller/HomeController.php',
+        'app/model/Test.php',
         'support/Request.php',
         'plugin/saiadmin/app/controller/LoginController.php',
         'plugin/example/app/controller/ExampleController.php',
@@ -135,7 +137,16 @@ it('discovers SaiAdmin and installed plugin business sources and resources', fun
                 'support',
             ])
             ->and($profile->runtimeResources())
-            ->toContain('plugin/saiadmin/config', 'plugin/saiadmin/public', 'plugin/example/app/view');
+            ->toContain('plugin/saiadmin/config', 'plugin/saiadmin/public', 'plugin/example/app/view')
+            ->and($profile->filterUserIgnores([
+                'app/model',
+                'app',
+                'app/view',
+                'support',
+                'support/bootstrap.php',
+                'vendor/example/tests',
+            ]))
+            ->toBe(['app/view', 'support/bootstrap.php', 'vendor/example/tests']);
 
         $manifest = $profile->writeCoverageManifest(
             ['app', 'support', 'plugin/saiadmin', 'plugin/example/app', '.typephp/build/login.php'],
@@ -143,7 +154,7 @@ it('discovers SaiAdmin and installed plugin business sources and resources', fun
                 'plugin/example/app/view', 'plugin/saiadmin/app/controller/LoginController.php'],
             ['plugin/saiadmin/app/controller/LoginController.php' => '.typephp/build/login.php'],
         );
-        expect($manifest['counts'])->toBe(['compiled' => 3, 'generated' => 1])
+        expect($manifest['counts'])->toBe(['compiled' => 4, 'generated' => 1])
             ->and(file_exists($directory . '/.typephp/build/source-coverage.json'))->toBeTrue();
     } finally {
         removeSaiAdminProfileFixture($directory);
