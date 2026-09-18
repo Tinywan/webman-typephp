@@ -134,6 +134,7 @@ class ProjectGenerator
      */
     public const REF_CAPTURE_SOURCES = [
         'vendor/workerman/webman-framework/src/Route/Route.php' => '.typephp/build/webman-route.php',
+        'vendor/workerman/coroutine/src/Barrier/BarrierInterface.php' => '.typephp/build/coroutine-barrier-interface.php',
         'vendor/workerman/coroutine/src/Barrier/Fiber.php' => '.typephp/build/coroutine-barrier-fiber.php',
         'vendor/workerman/coroutine/src/Channel/Fiber.php' => '.typephp/build/coroutine-channel-fiber.php',
     ];
@@ -206,11 +207,18 @@ class ProjectGenerator
                 . '        }' . "\r\n"
                 . '        return count($remaining) > 0 ? $path . \'?\' . http_build_query($remaining) : $path;',
         ],
+        'vendor/workerman/coroutine/src/Barrier/BarrierInterface.php' => [
+            'public static function wait(object &$barrier, int $timeout = -1): void;'
+            => 'public static function wait(mixed &$barrier, int $timeout = -1): void;',
+        ],
         // Barrier/Fiber::wait() 的 &$resumed 无外层赋值 → 捕获为 REF 槽，删除
         // `$resumed = false;` 即可。$timerId 则先被 `Timer::delay()` 返回值定型为
         // Int 再被引用捕获（v0.8 禁止），而闭包内只读不写——改为按值捕获（捕获点
         // 即赋值后，值恒等），并保留 `$timerId = null;` 保证未启动计时器时变量已定义。
+        // 同时将 object &$barrier 参数改为 mixed &$barrier，满足 AOT 引用参数限制。
         'vendor/workerman/coroutine/src/Barrier/Fiber.php' => [
+            'public static function wait(object &$barrier, int $timeout = -1): void'
+            => 'public static function wait(mixed &$barrier, int $timeout = -1): void',
             '        $resumed = false;' . "\r\n"
             . '        $timerId = null;' . "\r\n"
             => '        $timerId = null;' . "\r\n",
@@ -494,7 +502,15 @@ class ProjectGenerator
             if (!is_dir($directory) && !mkdir($directory, 0777, true) && !is_dir($directory)) {
                 throw new \RuntimeException('Unable to create the TypePHP build directory: ' . $directory);
             }
-            if (file_put_contents($targetFile, $this->stripStrayBootstrapCalls($this->patchUninitializedScalarStatics($content))) === false) {
+            $patchedContent = $this->stripStrayBootstrapCalls($this->patchUninitializedScalarStatics($content));
+            if ($sourceRel === 'vendor/workerman/coroutine/src/Barrier.php') {
+                $patchedContent = str_replace(
+                    'public static function wait(object &$barrier, int $timeout = -1): void',
+                    'public static function wait(mixed &$barrier, int $timeout = -1): void',
+                    $patchedContent,
+                );
+            }
+            if (file_put_contents($targetFile, $patchedContent) === false) {
                 throw new \RuntimeException('Unable to write the AOT static-patch source: ' . $targetFile);
             }
             $generated[] = $targetRel;
@@ -1190,14 +1206,22 @@ class ProjectGenerator
             'vendor/workerman/webman-framework/src/Route.php',
             'vendor/workerman/coroutine/tests',
             'vendor/workerman/coroutine/stubs',
+            'vendor/workerman/coroutine/src/Barrier/BarrierInterface.php',
             'vendor/workerman/coroutine/src/Barrier/Swow.php',
+            'vendor/workerman/coroutine/src/Barrier/Swoole.php',
             'vendor/workerman/coroutine/src/Channel/Swow.php',
+            'vendor/workerman/coroutine/src/Channel/Swoole.php',
             'vendor/workerman/coroutine/src/Context/Swow.php',
+            'vendor/workerman/coroutine/src/Context/Swoole.php',
             'vendor/workerman/coroutine/src/Coroutine/Swow.php',
+            'vendor/workerman/coroutine/src/Coroutine/Swoole.php',
             'vendor/workerman/coroutine/src/WaitGroup/Swow.php',
+            'vendor/workerman/coroutine/src/WaitGroup/Swoole.php',
+            'vendor/workerman/coroutine/src/Parallel.php',
             'vendor/workerman/workerman/src/Events/Swow.php',
             'vendor/workerman/coroutine/src/Pool.php',
             'vendor/workerman/coroutine/src/Utils/DestructionWatcher.php',
+            'vendor/monolog/monolog/src/Monolog/Processor/WebProcessor.php',
             'vendor/monolog/monolog/src/Monolog/Test',
             'vendor/tinywan/webman-mcp/src/config',
             'vendor/tinywan/webman-mcp/src/Install.php',

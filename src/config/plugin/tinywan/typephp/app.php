@@ -12,7 +12,7 @@ return [
     // Docker 编译环境配置
     'docker' => [
         'enabled' => true,
-        'image' => 'tinywan/typephp-webman-builder:v0.1.3',
+        'image' => 'tinywan/typephp-webman-builder:v0.2.1',
     ],
     // 默认输出配置
     'build' => [
@@ -55,13 +55,21 @@ return [
         'vendor/workerman/webman-framework/src/File.php',
         'vendor/workerman/coroutine/tests',
         'vendor/workerman/coroutine/stubs',
+        'vendor/workerman/coroutine/src/Barrier/BarrierInterface.php',
         'vendor/workerman/coroutine/src/Barrier/Swow.php',
+        'vendor/workerman/coroutine/src/Barrier/Swoole.php',
         'vendor/workerman/coroutine/src/Channel/Swow.php',
+        'vendor/workerman/coroutine/src/Channel/Swoole.php',
         'vendor/workerman/coroutine/src/Context/Swow.php',
+        'vendor/workerman/coroutine/src/Context/Swoole.php',
         'vendor/workerman/coroutine/src/Coroutine/Swow.php',
+        'vendor/workerman/coroutine/src/Coroutine/Swoole.php',
         'vendor/workerman/coroutine/src/WaitGroup/Swow.php',
+        'vendor/workerman/coroutine/src/WaitGroup/Swoole.php',
+        'vendor/workerman/coroutine/src/Parallel.php',
         'vendor/workerman/workerman/src/Events/Swow.php',
         'vendor/workerman/coroutine/src/Pool.php',
         'vendor/workerman/coroutine/src/Utils/DestructionWatcher.php',
+        'vendor/monolog/monolog/src/Monolog/Processor/WebProcessor.php',
     ],
 ];

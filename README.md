@@ -51,7 +51,7 @@ php webman typephp:package --force
 php webman typephp:package --refresh-main
 ```
 
-默认 builder 为 `tinywan/typephp-webman-builder:v0.1.3`。编译在 Docker 中完成，宿主机不需要 C++、Clang 或 TypePHP 编译器。
+默认 builder 为 `tinywan/typephp-webman-builder:v0.2.1`。编译在 Docker 中完成，宿主机不需要 C++、Clang 或 TypePHP 编译器。
 
 ### 4. 启动产物
 
@@ -119,7 +119,7 @@ return [
     'enable' => true,
     'docker' => [
         'enabled' => true,
-        'image' => 'tinywan/typephp-webman-builder:v0.1.3',
+        'image' => 'tinywan/typephp-webman-builder:v0.2.1',
     ],
     'build' => [
         'output_name' => 'webman-server',
@@ -129,7 +129,7 @@ return [
 ];
 ```
 
-`--image` 的优先级最高；未指定时使用上述 `docker.image`，配置缺失时才回退至 `tinywan/typephp-webman-builder:v0.1.3`。
+`--image` 的优先级最高；未指定时使用上述 `docker.image`，配置缺失时才回退至 `tinywan/typephp-webman-builder:v0.2.1`。
 
 ## 🎯 可信 MVP 边界
 
