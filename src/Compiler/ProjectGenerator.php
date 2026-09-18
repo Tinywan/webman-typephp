@@ -260,6 +260,7 @@ class ProjectGenerator
         'vendor/nesbot/carbon/src/Carbon/Translator.php' => '.typephp/build/carbon-translator.php',
         'vendor/phpmailer/phpmailer/src/PHPMailer.php' => '.typephp/build/phpmailer.php',
         'plugin/saiadmin/utils/Captcha.php' => '.typephp/build/saiadmin-captcha.php',
+        'plugin/saiadmin/utils/code/CodeEngine.php' => '.typephp/build/saiadmin-code-engine.php',
         'plugin/saiadmin/app/controller/LoginController.php' => '.typephp/build/saiadmin-login-controller.php',
         'plugin/saiadmin/app/controller/InstallController.php' => '.typephp/build/saiadmin-install-controller.php',
         'plugin/saiadmin/app/controller/SystemController.php' => '.typephp/build/saiadmin-system-controller.php',
@@ -3003,6 +3004,20 @@ class ProjectGenerator
         }
         if ($sourceRel === 'vendor/symfony/http-foundation/Request.php') {
             $content = $this->stripSymfonyRequestPreloadHints($content);
+        }
+        if ($sourceRel === 'plugin/saiadmin/utils/code/CodeEngine.php') {
+            $content = str_replace(
+                "defined('DS') or define('DS', DIRECTORY_SEPARATOR);",
+                'const DS = DIRECTORY_SEPARATOR;',
+                $content,
+                $count,
+            );
+            if ($count !== 1) {
+                throw new \RuntimeException(
+                    "SaiAdmin CodeEngine directory separator compatibility rule expected 1 match, found {$count}: "
+                    . 'plugin/saiadmin/utils/code/CodeEngine.php.',
+                );
+            }
         }
         foreach (self::SWITCH_TERMINAL_REPLACEMENTS[$sourceRel] ?? [] as $search => $replacement) {
             if ($sourceRel === 'plugin/saiadmin/app/cache/ReflectionCache.php') {

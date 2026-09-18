@@ -3632,6 +3632,43 @@ it('matches ThinkORM dynamic parser calls to their AOT arity', function (): void
     }
 });
 
+it('replaces the SaiAdmin CodeEngine runtime constant guard with a declaration', function (): void {
+    $directory = sys_get_temp_dir() . '/typephp-saiadmin-code-engine-' . bin2hex(random_bytes(4));
+    $sourceDirectory = $directory . '/plugin/saiadmin/utils/code';
+    mkdir($sourceDirectory, 0777, true);
+    file_put_contents(
+        $sourceDirectory . '/CodeEngine.php',
+        <<<'PHP'
+<?php
+namespace plugin\saiadmin\utils\code;
+
+// 定义目录分隔符常量
+defined('DS') or define('DS', DIRECTORY_SEPARATOR);
+
+class CodeEngine
+{
+    public function templatePath(): string
+    {
+        return base_path() . DS . 'plugin';
+    }
+}
+PHP,
+    );
+
+    try {
+        $generator = new ProjectGenerator($directory);
+        expect($generator->generateSwitchTerminalSources())
+            ->toBe(['.typephp/build/saiadmin-code-engine.php']);
+        $source = (string) file_get_contents($directory . '/.typephp/build/saiadmin-code-engine.php');
+        expect($source)
+            ->toContain('const DS = DIRECTORY_SEPARATOR;')
+            ->not->toContain("defined('DS')")
+            ->not->toContain("define('DS'");
+    } finally {
+        removeTypephpTestDirectory($directory);
+    }
+});
+
 it('stabilizes SaiAdmin captcha colors and uses a packaged runtime font in AOT', function (): void {
     $directory = sys_get_temp_dir() . '/typephp-saiadmin-captcha-' . bin2hex(random_bytes(4));
     $sourceDirectory = $directory . '/plugin/saiadmin/utils';
