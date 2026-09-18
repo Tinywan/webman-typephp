@@ -8,13 +8,14 @@ final class SaiAdminProfile
 {
     public const NAME = 'saiadmin';
 
-    private const SUPPORTED_PACKAGES = [
-        'saithink/saiadmin' => ['6.1.1'],
+    private const SUPPORTED_EXACT_VERSIONS = [
         'topthink/think-orm' => ['v3.0.34'],
         'nesbot/carbon' => ['3.13.2'],
         'workerman/webman-framework' => ['dev-master'],
         'workerman/workerman' => ['dev-master'],
     ];
+
+    private const SUPPORTED_SAIADMIN_RANGE = '>=6.1.1 <6.2.0';
 
     private const SUPPORTED_REFERENCES = [
         'workerman/webman-framework' => 'fa352016aac4c9e21c8781cc127afd25ee144795',
@@ -53,7 +54,25 @@ final class SaiAdminProfile
             }
         }
 
-        foreach (self::SUPPORTED_PACKAGES as $package => $versions) {
+        $saiAdminVersion = $installed['saithink/saiadmin'] ?? null;
+        if ($saiAdminVersion === null) {
+            throw new \RuntimeException('The saiadmin profile requires saithink/saiadmin.');
+        }
+        $normalizedSaiAdminVersion = ltrim($saiAdminVersion, 'v');
+        if (
+            preg_match('/^6\.1\.\d+$/', $normalizedSaiAdminVersion) !== 1
+            ||
+            version_compare($normalizedSaiAdminVersion, '6.1.1', '<')
+            || version_compare($normalizedSaiAdminVersion, '6.2.0', '>=')
+        ) {
+            throw new \RuntimeException(
+                "Unsupported saithink/saiadmin version {$saiAdminVersion}; "
+                . 'supported candidate range: ' . self::SUPPORTED_SAIADMIN_RANGE . '.',
+            );
+        }
+        $this->assertInstalledSaiAdminMatchesPackage();
+
+        foreach (self::SUPPORTED_EXACT_VERSIONS as $package => $versions) {
             $version = $installed[$package] ?? null;
             if ($version === null) {
                 throw new \RuntimeException("The saiadmin profile requires {$package}.");
@@ -75,7 +94,10 @@ final class SaiAdminProfile
             }
         }
 
-        return array_intersect_key($installed, self::SUPPORTED_PACKAGES);
+        return array_intersect_key(
+            $installed,
+            ['saithink/saiadmin' => true] + array_fill_keys(array_keys(self::SUPPORTED_EXACT_VERSIONS), true),
+        );
     }
 
     /**
@@ -248,7 +270,60 @@ final class SaiAdminProfile
         return $path === 'support/bootstrap.php'
             || str_contains($path, '/config/')
             || str_contains($path, '/app/view/')
+            || str_starts_with($path, 'plugin/saiadmin/db/')
             || str_starts_with($path, 'plugin/saiadmin/utils/code/stub/');
+    }
+
+    private function assertInstalledSaiAdminMatchesPackage(): void
+    {
+        $installed = $this->saiAdminBusinessSourceMap($this->absolute('plugin/saiadmin'));
+        $package = $this->saiAdminBusinessSourceMap(
+            $this->absolute('vendor/saithink/saiadmin/src/plugin/saiadmin'),
+        );
+        if ($installed === $package) {
+            return;
+        }
+
+        $paths = array_values(array_unique(array_merge(array_keys($installed), array_keys($package))));
+        sort($paths);
+        foreach ($paths as $path) {
+            if (($installed[$path] ?? null) !== ($package[$path] ?? null)) {
+                throw new \RuntimeException(
+                    "Installed SaiAdmin source does not match composer.lock package: plugin/saiadmin/{$path}.",
+                );
+            }
+        }
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function saiAdminBusinessSourceMap(string $root): array
+    {
+        if (!is_dir($root)) {
+            throw new \RuntimeException('SaiAdmin package source was not found for installed-source verification.');
+        }
+
+        $files = [];
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS),
+        );
+        foreach ($iterator as $file) {
+            if (!$file->isFile() || strtolower($file->getExtension()) !== 'php') {
+                continue;
+            }
+            $relative = str_replace('\\', '/', substr($file->getPathname(), strlen($root) + 1));
+            if ($this->isNonBusinessPhp('plugin/saiadmin/' . $relative)) {
+                continue;
+            }
+            $hash = hash_file('sha256', $file->getPathname());
+            if (!is_string($hash)) {
+                throw new \RuntimeException("Unable to hash SaiAdmin package source: {$relative}.");
+            }
+            $files[$relative] = $hash;
+        }
+        ksort($files);
+        return $files;
     }
 
     /**

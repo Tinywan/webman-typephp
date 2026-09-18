@@ -521,7 +521,10 @@ it('flattens namespaced fast-route functions guards into AOT sources', function 
             ->toContain(
                 "sources:\n  - main.php\n  - .typephp/build/helpers.php\n  - .typephp/build/fast-route-functions.php\n",
             )
-            ->toContain("\n  - vendor/nikic/fast-route/src/functions.php\n");
+            ->toContain("\n  - vendor/nikic/fast-route/src/functions.php\n")
+            ->toContain("\n  - vendor/cakephp/chronos/rector.php\n")
+            ->toContain("\n  - vendor/cakephp\n")
+            ->toContain("\n  - vendor/robmorgan/phinx\n");
     } finally {
         removeTypephpTestDirectory($directory);
     }
@@ -529,7 +532,17 @@ it('flattens namespaced fast-route functions guards into AOT sources', function 
 
 it('discovers and flattens first-party plugin function guards', function (): void {
     $directory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'typephp-test-' . bin2hex(random_bytes(4));
+    mkdir($directory . '/app', 0777, true);
     mkdir($directory . '/plugin/example/app', 0777, true);
+    file_put_contents($directory . '/app/functions.php', <<<'PHP'
+        <?php
+        if (!function_exists('application_id')) {
+            function application_id(): string
+            {
+                return 'application';
+            }
+        }
+        PHP);
     file_put_contents($directory . '/plugin/example/app/functions.php', <<<'PHP'
         <?php
         if (!function_exists('example_id')) {
@@ -543,14 +556,23 @@ it('discovers and flattens first-party plugin function guards', function (): voi
     try {
         $generator = new ProjectGenerator($directory);
         expect($generator->discoverProjectGuardedSources())->toBe([
+            'app/functions.php' => '.typephp/build/app-functions.php',
             'plugin/example/app/functions.php' => '.typephp/build/example-functions.php',
         ]);
-        expect($generator->generateFlattenedSources())->toBe(['.typephp/build/example-functions.php']);
+        expect($generator->generateFlattenedSources())->toBe([
+            '.typephp/build/app-functions.php',
+            '.typephp/build/example-functions.php',
+        ]);
+        expect(file_get_contents($directory . '/.typephp/build/app-functions.php'))
+            ->toContain("function application_id(): string")
+            ->not->toContain('function_exists');
         expect(file_get_contents($directory . '/.typephp/build/example-functions.php'))
             ->toContain("function example_id(): string")
             ->not->toContain('function_exists');
         expect(file_get_contents($generator->generateProjectYml(['include' => ['plugin/example/app']])) )
+            ->toContain("  - .typephp/build/app-functions.php\n")
             ->toContain("  - .typephp/build/example-functions.php\n")
+            ->toContain("  - app/functions.php\n")
             ->toContain("  - plugin/example/app/functions.php\n");
     } finally {
         removeTypephpTestDirectory($directory);
@@ -1936,6 +1958,53 @@ PHP,
         expect($content)
             ->toContain('return sprintf("%u", $val);')
             ->not->toContain('$val = sprintf("%u", $val);');
+    } finally {
+        removeTypephpTestDirectory($directory);
+    }
+});
+
+it('keeps the ip2region v3 integer slot stable on 32-bit fallback', function (): void {
+    $directory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'typephp-test-' . bin2hex(random_bytes(4));
+    $sourceDirectory = $directory . '/vendor/zoujingli/ip2region/src/ip2region/xdb';
+    mkdir($sourceDirectory, 0777, true);
+    $source = <<<'PHP'
+<?php
+class Util {
+    public static function le_getUint32($b, $idx) {
+        $val = ord($b[$idx]);
+        if ($val < 0 && PHP_INT_SIZE == 4) {
+            $val = sprintf("%u", $val);
+        }
+        return $val;
+    }
+}
+PHP;
+    file_put_contents($sourceDirectory . '/Util.php', $source);
+
+    try {
+        $generator = new ProjectGenerator($directory);
+        $generator->generateSwitchTerminalSources();
+        $content = file_get_contents($directory . '/.typephp/build/ip2region-v3-util.php');
+        expect($content)
+            ->toContain('return sprintf("%u", $val);')
+            ->not->toContain('$val = sprintf("%u", $val);');
+
+        file_put_contents(
+            $sourceDirectory . '/Util.php',
+            str_replace('$val = sprintf("%u", $val);', 'return sprintf("%u", $val);', $source),
+        );
+        expect(fn(): array => $generator->generateSwitchTerminalSources())
+            ->toThrow(
+                RuntimeException::class,
+                'SaiAdmin IP2Region v3 integer slot compatibility rule expected 1 match(es), found 0',
+            );
+
+        file_put_contents($sourceDirectory . '/Util.php', $source . "\n" . $source);
+        expect(fn(): array => $generator->generateSwitchTerminalSources())
+            ->toThrow(
+                RuntimeException::class,
+                'SaiAdmin IP2Region v3 integer slot compatibility rule expected 1 match(es), found 2',
+            );
     } finally {
         removeTypephpTestDirectory($directory);
     }
@@ -3539,7 +3608,21 @@ PHP,
 it('uses explicit SaiAdmin public routes when TypePHP reflection omits protected defaults', function (): void {
     $directory = sys_get_temp_dir() . '/typephp-saiadmin-reflection-' . bin2hex(random_bytes(4));
     $sourceDirectory = $directory . '/plugin/saiadmin/app/cache';
+    $controllerDirectory = $directory . '/plugin/saiadmin/app/controller';
     mkdir($sourceDirectory, 0777, true);
+    mkdir($controllerDirectory, 0777, true);
+    file_put_contents(
+        $controllerDirectory . '/LoginController.php',
+        "<?php\nclass LoginController\n{\n"
+        . "    protected array \$noNeedLogin = ['captcha', 'login', 'refresh'];\n"
+        . "    public function captcha() : Response {}\n}\n",
+    );
+    file_put_contents(
+        $controllerDirectory . '/InstallController.php',
+        "<?php\nclass InstallController\n{\n"
+        . "    protected array \$noNeedLogin = ['index', 'install'];\n"
+        . "    public function index() {}\n}\n",
+    );
     $source = <<<'PHP'
 <?php
 class ReflectionCache
@@ -3566,7 +3649,7 @@ PHP;
 
         expect($content)
             ->toContain('LoginController::class')
-            ->toContain('$data = [\'captcha\', \'login\'];')
+            ->toContain('$data = [\'captcha\', \'login\', \'refresh\'];')
             ->toContain('InstallController::class')
             ->toContain('$data = [\'index\', \'install\'];')
             ->toContain('elseif (class_exists($controller))');
@@ -3578,8 +3661,18 @@ PHP;
         expect(fn(): array => $generator->generateSwitchTerminalSources())
             ->toThrow(
                 RuntimeException::class,
-                'SaiAdmin 6.1.1 reflection compatibility rule expected 1 match(es), found 0',
+                'SaiAdmin reflection compatibility rule expected 1 match(es), found 0',
             );
+
+        file_put_contents($sourceDirectory . '/ReflectionCache.php', $source);
+        file_put_contents(
+            $controllerDirectory . '/LoginController.php',
+            "<?php\nclass LoginController\n{\n"
+            . "    protected array \$noNeedLogin = self::PUBLIC_ACTIONS;\n"
+            . "    public function captcha() : Response {}\n}\n",
+        );
+        expect(fn(): array => $generator->generateSwitchTerminalSources())
+            ->toThrow(RuntimeException::class, 'requires a static noNeedLogin list');
     } finally {
         removeTypephpTestDirectory($directory);
     }
@@ -3619,14 +3712,118 @@ PHP;
         expect(fn(): array => $generator->generateSwitchTerminalSources())
             ->toThrow(
                 RuntimeException::class,
-                'SaiAdmin 6.1.1 controller request arity compatibility rule expected 1 match(es), found 0',
+                'SaiAdmin controller request arity compatibility rule expected 1 match(es), found 0',
             );
 
         file_put_contents($sourceDirectory . '/LoginController.php', $source . "\n" . $source);
         expect(fn(): array => $generator->generateSwitchTerminalSources())
             ->toThrow(
                 RuntimeException::class,
-                'SaiAdmin 6.1.1 controller request arity compatibility rule expected 1 match(es), found 2',
+                'SaiAdmin controller request arity compatibility rule expected 1 match(es), found 2',
+            );
+    } finally {
+        removeTypephpTestDirectory($directory);
+    }
+});
+
+it('makes the SaiAdmin system exception previous cause explicitly nullable', function (): void {
+    $directory = sys_get_temp_dir() . '/typephp-saiadmin-system-exception-' . bin2hex(random_bytes(4));
+    $sourceDirectory = $directory . '/plugin/saiadmin/exception';
+    mkdir($sourceDirectory, 0777, true);
+    $source = <<<'PHP'
+<?php
+use Throwable;
+class SystemException extends RuntimeException
+{
+    public function __construct($message, $code = 400, Throwable $previous = null)
+    {
+        parent::__construct($message, $code, $previous);
+    }
+}
+PHP;
+    file_put_contents($sourceDirectory . '/SystemException.php', $source);
+
+    try {
+        $generator = new ProjectGenerator($directory);
+        $generator->generateSwitchTerminalSources();
+        $content = file_get_contents($directory . '/.typephp/build/saiadmin-system-exception.php');
+
+        expect($content)
+            ->toContain('?Throwable $previous = null')
+            ->not->toContain(', Throwable $previous = null');
+
+        file_put_contents(
+            $sourceDirectory . '/SystemException.php',
+            str_replace(', Throwable $previous = null)', ', ?Throwable $previous = null)', $source),
+        );
+        expect(fn(): array => $generator->generateSwitchTerminalSources())
+            ->toThrow(
+                RuntimeException::class,
+                'SaiAdmin system exception nullable cause compatibility rule expected 1 match(es), found 0',
+            );
+
+        file_put_contents($sourceDirectory . '/SystemException.php', $source . "\n" . $source);
+        expect(fn(): array => $generator->generateSwitchTerminalSources())
+            ->toThrow(
+                RuntimeException::class,
+                'SaiAdmin system exception nullable cause compatibility rule expected 1 match(es), found 2',
+            );
+    } finally {
+        removeTypephpTestDirectory($directory);
+    }
+});
+
+it('aligns the Nelexa response stream with PSR signatures in its AOT copy', function (): void {
+    $directory = sys_get_temp_dir() . '/typephp-nelexa-response-stream-' . bin2hex(random_bytes(4));
+    $sourceDirectory = $directory . '/vendor/nelexa/zip/src/IO/Stream';
+    mkdir($sourceDirectory, 0777, true);
+    $source = <<<'PHP'
+<?php
+class ResponseStream
+{
+    public function getMetadata($key = null)
+    {
+    }
+    public function tell()
+    {
+        return $this->stream ? ftell($this->stream) : false;
+    }
+    public function seek($offset, $whence = \SEEK_SET): void {}
+    public function write($string)
+    {
+        return $this->stream !== null && $this->writable ? fwrite($this->stream, $string) : false;
+    }
+    public function read($length): string {}
+}
+PHP;
+    file_put_contents($sourceDirectory . '/ResponseStream.php', $source);
+
+    try {
+        $generator = new ProjectGenerator($directory);
+        $generator->generateSwitchTerminalSources();
+        $content = file_get_contents($directory . '/.typephp/build/nelexa-response-stream.php');
+
+        expect($content)
+            ->toContain('tell(): int')
+            ->toContain('seek(int $offset, int $whence')
+            ->toContain('write(string $string): int')
+            ->toContain('read(int $length): string');
+
+        file_put_contents(
+            $sourceDirectory . '/ResponseStream.php',
+            str_replace('public function tell()', 'public function tell(): int', $source),
+        );
+        expect(fn(): array => $generator->generateSwitchTerminalSources())
+            ->toThrow(
+                RuntimeException::class,
+                'SaiAdmin Nelexa PSR stream signature compatibility rule expected 1 match(es), found 0',
+            );
+
+        file_put_contents($sourceDirectory . '/ResponseStream.php', $source . "\n" . $source);
+        expect(fn(): array => $generator->generateSwitchTerminalSources())
+            ->toThrow(
+                RuntimeException::class,
+                'SaiAdmin Nelexa PSR stream signature compatibility rule expected 1 match(es), found 2',
             );
     } finally {
         removeTypephpTestDirectory($directory);
@@ -3650,14 +3847,14 @@ it('matches ThinkORM collection callbacks to each value and key arguments', func
         expect(fn(): array => $generator->generateSwitchTerminalSources())
             ->toThrow(
                 RuntimeException::class,
-                'SaiAdmin 6.1.1 ThinkORM collection callback arity compatibility rule expected 10 match(es), found 9',
+                'SaiAdmin ThinkORM collection callback arity compatibility rule expected 10 match(es), found 9',
             );
 
         file_put_contents($sourceDirectory . '/Collection.php', "<?php\n" . str_repeat($closure . "\n", 11));
         expect(fn(): array => $generator->generateSwitchTerminalSources())
             ->toThrow(
                 RuntimeException::class,
-                'SaiAdmin 6.1.1 ThinkORM collection callback arity compatibility rule expected 10 match(es), found 11',
+                'SaiAdmin ThinkORM collection callback arity compatibility rule expected 10 match(es), found 11',
             );
     } finally {
         removeTypephpTestDirectory($directory);
@@ -5054,7 +5251,10 @@ it('keeps runtime-only mail and callable streams dynamic while stabilizing nativ
     expect(ProjectGenerator::REGISTERED_DYNAMIC_SOURCES)
         ->toContain('vendor/guzzlehttp/psr7/src/FnStream.php')
         ->toContain('vendor/phpmailer/phpmailer/src/POP3.php')
-        ->toContain('vendor/phpmailer/phpmailer/src/SMTP.php');
+        ->toContain('vendor/phpmailer/phpmailer/src/SMTP.php')
+        ->toContain('vendor/cakephp')
+        ->toContain('vendor/league/container')
+        ->toContain('vendor/robmorgan/phinx');
 
     $directory = sys_get_temp_dir() . '/typephp-native-scalars-' . bin2hex(random_bytes(4));
     $fixtures = [

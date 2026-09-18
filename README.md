@@ -155,7 +155,9 @@ return [
 
 ### SaiAdmin profile
 
-`--profile=saiadmin` 要求存在 `plugin/saiadmin` 和有效的 `composer.lock`。当前首个支持矩阵固定为 SaiAdmin `6.1.1`、ThinkORM `v3.0.34`、Carbon `3.13.2`；未知版本会在进入 Docker 编译前失败。
+`--profile=saiadmin` 要求存在 `plugin/saiadmin` 和有效的 `composer.lock`。当前允许稳定版 SaiAdmin `>=6.1.1 <6.2.0` 进入候选构建；预发布版、`6.1.0` 及 `6.2.0+` 会在进入 Docker 编译前失败。版本范围不是无条件兼容承诺：每次构建仍会校验 ThinkORM `v3.0.34`、Carbon `3.13.2`、锁定的 Webman/Workerman 提交、Composer 安装源码一致性和每条兼容规则的预期命中数。
+
+已验证版本分层如下：SaiAdmin `6.1.1` 已完成 Linux amd64 编译、打包和隔离数据库业务验收；`6.1.5` 已完成 Linux amd64 完整编译与 portable-dir 校验，数据库业务验收尚未补齐。精确依赖组合和证据边界见 [支持矩阵](docs/saiadmin-aot/docs/compatibility-matrix.md) 与 [验证证据](docs/saiadmin-aot/docs/verification-evidence.md)。
 
 profile 会自动发现根 `app/`、`support/`、SaiAdmin 核心和每个 `plugin/*/app/`，并编译完整 Composer 依赖树。兼容副本只写入 `.typephp/build/`，普通 PHP 源码不变。构建输出中的 `source-coverage.json` 逐项记录业务 PHP 是直接编译还是由哪个 AOT 副本替代；业务文件未分类、被排除却没有等价副本，或漂移到未知依赖版本时都会终止构建。
 

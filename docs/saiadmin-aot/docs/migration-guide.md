@@ -18,9 +18,17 @@
 
 升级了插件的 `main.php.stub` 后，存量项目必须显式使用 `--refresh-main` 重建入口并审查备份，不能只更新依赖后沿用旧入口。
 
+升级 SaiAdmin 时使用 Composer `--minimal-changes`，并确认
+`plugin/saiadmin` 已与 `vendor/saithink/saiadmin/src/plugin/saiadmin` 同步。
+profile 会拒绝版本号已升级但安装目录仍保留旧源码的项目。
+
+TypePHP 会拒绝同一局部变量跨不兼容类型赋值，也可能拒绝业务代码直接读取模型的
+protected 属性。前者应拆成不同变量或分支内直接返回；后者应改用公开 accessor、
+`getAttr()` 或显式 DTO。未知自有业务写法必须修复后重新编译，不能登记为动态资源。
+
 若第三方代码依赖 TypePHP 当前不能表示的运行时反射或动态行为，必须同时：
 
-1. 在 `runtime_resources` 中逐文件登记；
+1. 在 `runtime_resources` 中以最小文件或包目录登记；
 2. 在 `ignore` 中使用相同路径；
 3. 通过 Webman `autoload.files` 在使用前加载；
 4. 证明自有业务 PHP 没有进入该清单。

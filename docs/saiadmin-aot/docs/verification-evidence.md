@@ -2,9 +2,12 @@
 
 验收编号：`AOT-SAIADMIN-LINUX-01`
 
-本记录对应 `feat/saiadmin-aot-profile` 的首版候选。验证于 2026-09-14
-在 Mac 上的隔离 Linux amd64 容器环境完成。原始日志包含本地路径和一次性测试账号，
-因此不提交原始文件；下文保留版本、数量、哈希、返回码和可复现命令。
+本记录对应 `feat/saiadmin-aot-profile` 的首版候选。SaiAdmin 6.1.1 的完整业务
+验收于 2026-09-14 在 Mac 上的隔离 Linux amd64 容器环境完成；SaiAdmin 6.1.5
+的构建验收于 2026-09-18 完成。原始日志包含本地路径和一次性测试账号，因此不提交
+原始文件；下文保留版本、数量、哈希、返回码和可复现命令。
+
+## SaiAdmin 6.1.1 完整验收
 
 ## 验证结论
 
@@ -133,7 +136,7 @@ permission denial: HTTP 200 / JSON 400
 
 ## 复现
 
-维护者可以在一次性 SaiAdmin 6.1.1 测试项目中执行：
+维护者可以在一次性、处于支持范围的 SaiAdmin 测试项目中执行：
 
 ```bash
 php webman typephp:doctor
@@ -146,6 +149,48 @@ AOT_DIST=/absolute/path/to/dist \
 业务验收需要由调用方提供隔离环境的 URL、接口路径和临时登录请求文件。必填变量及
 安全开关记录在 `scripts/accept-linux.sh` 中。脚本拒绝在未显式设置
 `AOT_ACCEPT_ISOLATED=YES` 时启动。
+
+## SaiAdmin 6.1.5 构建验收
+
+2026-09-18 使用官方 SaiAdmin `6.1.5` 源码和 Composer `--minimal-changes`
+依赖组合执行完整 Linux amd64 构建。构建前验证安装目录与 Composer 包源码一致；
+自有项目代码和非 SaiAdmin 插件不属于本证据输入。
+
+```text
+TypePHP precheck and C++ generation: 2,275 / 2,275
+Build exit code: 0
+Portable-dir contract: OK
+ELF: 64-bit LSB pie executable, x86-64
+portable-dir size: 224 MB
+runtime resources: 74
+Pest: 133 passed, 1,410 assertions
+Existing fixture warning: 1
+SaiAdmin business PHP: 120
+directly compiled: 109
+generated AOT copies: 11
+unclassified SaiAdmin business PHP: 0
+business PHP leaked into portable-dir: 0
+```
+
+第三方安装与迁移工具 `vendor/cakephp`、`vendor/league/container` 和
+`vendor/robmorgan/phinx` 明确登记为动态运行资源；SaiAdmin 核心、登录、权限、
+模型与缓存业务代码均未借此绕过 AOT。
+
+本次产物身份：
+
+| 文件 | SHA-256 |
+| --- | --- |
+| `webman-server.bin` | `6f6fe803153c9bf84b8be3a4a1f9c4fe1493703df77a401ba5cdcf774baf5c7e` |
+| `build-manifest.json` | `6aa936c82bdb5549ef2302bf5feb24d34d7ece0191a6e1da143251ce12785836` |
+| `source-coverage.json` | `d7cf4d22f4388d830496fbcdb5bb6114ee7d7de3a998ca601e75dd8d3afeb5b5` |
+
+本次构建镜像身份为
+`webman-typephp-saiadmin@sha256:5f4065b17fafc6eb86f6478f10a060211b5e9c396e8f64fa93f164b727195c5b`。
+它是本地验证候选，不替代发布时应固定的公开 builder digest。
+
+6.1.5 本轮没有创建或连接数据库，也没有创建测试账号，因此只证明编译、链接、
+覆盖和 portable-dir 完整性，不证明验证码、登录、用户信息或权限拒绝路径已经运行。
+在新的隔离数据库验收完成前，6.1.5 的状态是“构建支持”，不是“完整业务验收”。
 
 ## 证据边界
 

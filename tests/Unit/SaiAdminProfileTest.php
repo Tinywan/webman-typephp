@@ -23,13 +23,19 @@ function removeSaiAdminProfileFixture(string $directory): void
     rmdir($directory);
 }
 
-function createSaiAdminProfileFixture(string $directory, string $ormVersion = 'v3.0.34'): void
+function createSaiAdminProfileFixture(
+    string $directory,
+    string $ormVersion = 'v3.0.34',
+    string $saiAdminVersion = '6.1.1',
+): void
 {
     foreach ([
         'app/controller',
         'support',
         'plugin/saiadmin/app/controller',
+        'vendor/saithink/saiadmin/src/plugin/saiadmin/app/controller',
         'plugin/saiadmin/config',
+        'plugin/saiadmin/db/data',
         'plugin/saiadmin/public',
         'plugin/example/app/controller',
         'plugin/example/app/view',
@@ -45,8 +51,13 @@ function createSaiAdminProfileFixture(string $directory, string $ormVersion = 'v
     ] as $path) {
         file_put_contents($directory . '/' . $path, "<?php\nclass Fixture {}\n");
     }
+    file_put_contents(
+        $directory . '/vendor/saithink/saiadmin/src/plugin/saiadmin/app/controller/LoginController.php',
+        "<?php\nclass Fixture {}\n",
+    );
     file_put_contents($directory . '/support/bootstrap.php', "<?php\nreturn true;\n");
     file_put_contents($directory . '/plugin/saiadmin/config/app.php', "<?php\nreturn [];\n");
+    file_put_contents($directory . '/plugin/saiadmin/db/data/demo.php', "<?php\nreturn [];\n");
     file_put_contents($directory . '/plugin/example/app/view/page.php', "<?php\n");
     foreach ([
         'Cast',
@@ -75,7 +86,7 @@ function createSaiAdminProfileFixture(string $directory, string $ormVersion = 'v
     }
     file_put_contents($directory . '/composer.lock', json_encode([
         'packages' => [
-            ['name' => 'saithink/saiadmin', 'version' => '6.1.1'],
+            ['name' => 'saithink/saiadmin', 'version' => $saiAdminVersion],
             ['name' => 'topthink/think-orm', 'version' => $ormVersion],
             ['name' => 'nesbot/carbon', 'version' => '3.13.2'],
             [
@@ -136,6 +147,44 @@ it('discovers SaiAdmin and installed plugin business sources and resources', fun
         );
         expect($manifest['counts'])->toBe(['compiled' => 3, 'generated' => 1])
             ->and(file_exists($directory . '/.typephp/build/source-coverage.json'))->toBeTrue();
+    } finally {
+        removeSaiAdminProfileFixture($directory);
+    }
+});
+
+it('accepts the bounded SaiAdmin 6.1 release line and rejects its boundaries', function (): void {
+    $directory = sys_get_temp_dir() . '/typephp-saiadmin-profile-' . bin2hex(random_bytes(4));
+
+    try {
+        createSaiAdminProfileFixture($directory, saiAdminVersion: '6.1.5');
+        expect((new SaiAdminProfile($directory))->assertSupported()['saithink/saiadmin'])->toBe('6.1.5');
+
+        foreach (['6.1.0', '6.1.6-beta.1', '6.2.0'] as $unsupported) {
+            $lock = file_get_contents($directory . '/composer.lock');
+            file_put_contents(
+                $directory . '/composer.lock',
+                str_replace('6.1.5', $unsupported, (string) $lock),
+            );
+            expect(fn(): array => (new SaiAdminProfile($directory))->assertSupported())
+                ->toThrow(RuntimeException::class, 'supported candidate range: >=6.1.1 <6.2.0');
+            file_put_contents($directory . '/composer.lock', (string) $lock);
+        }
+    } finally {
+        removeSaiAdminProfileFixture($directory);
+    }
+});
+
+it('rejects a composer version that does not match the installed SaiAdmin source', function (): void {
+    $directory = sys_get_temp_dir() . '/typephp-saiadmin-profile-' . bin2hex(random_bytes(4));
+    createSaiAdminProfileFixture($directory, saiAdminVersion: '6.1.5');
+
+    try {
+        file_put_contents(
+            $directory . '/plugin/saiadmin/app/controller/LoginController.php',
+            "<?php\nclass ChangedFixture {}\n",
+        );
+        expect(fn(): array => (new SaiAdminProfile($directory))->assertSupported())
+            ->toThrow(RuntimeException::class, 'Installed SaiAdmin source does not match composer.lock package');
     } finally {
         removeSaiAdminProfileFixture($directory);
     }

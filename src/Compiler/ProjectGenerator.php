@@ -33,6 +33,7 @@ class ProjectGenerator
         'vendor/illuminate/reflection/helpers.php' => '.typephp/build/illuminate-reflection-helpers.php',
         'vendor/illuminate/support/helpers.php' => '.typephp/build/illuminate-support-helpers.php',
         'vendor/illuminate/support/functions.php' => '.typephp/build/illuminate-support-functions.php',
+        'vendor/cakephp/core/functions.php' => '.typephp/build/cakephp-core-functions.php',
         'vendor/ralouphie/getallheaders/src/getallheaders.php' => '.typephp/build/getallheaders.php',
         'vendor/symfony/deprecation-contracts/function.php' => '.typephp/build/symfony-trigger-deprecation.php',
         'vendor/symfony/polyfill-intl-grapheme/bootstrap80.php' => '.typephp/build/symfony-grapheme-functions.php',
@@ -42,6 +43,7 @@ class ProjectGenerator
         'vendor/topthink/think-validate/src/helper.php' => '.typephp/build/think-validate-functions.php',
         'vendor/zoujingli/ip2region/Ip2Region.php' => '.typephp/build/ip2region-class.php',
         'vendor/zoujingli/ip2region/function.php' => '.typephp/build/ip2region-functions.php',
+        'vendor/zoujingli/ip2region/src/common.php' => '.typephp/build/ip2region-v3-functions.php',
         'vendor/symfony/polyfill-php85/bootstrap.php' => '.typephp/build/symfony-php85-functions.php',
         'vendor/symfony/polyfill-php85/Resources/stubs/DelayedTargetValidation.php' => '.typephp/build/php85-delayed-target-validation.php',
         'vendor/symfony/polyfill-php85/Resources/stubs/NoDiscard.php' => '.typephp/build/php85-no-discard.php',
@@ -81,8 +83,16 @@ class ProjectGenerator
         'vendor/phpmailer/phpmailer/get_oauth_token.php',
         'vendor/phpmailer/phpmailer/src/POP3.php',
         'vendor/phpmailer/phpmailer/src/SMTP.php',
+        // SaiAdmin 6.1.5 uses Phinx for install-time migrations. Its CakePHP
+        // and League Container stack relies on dynamic PHP patterns outside
+        // TypePHP v0.8's bounded type system, so keep this third-party tooling
+        // explicit and inspectable instead of silently dropping its features.
+        'vendor/cakephp',
+        'vendor/league/container',
+        'vendor/robmorgan/phinx',
         'vendor/symfony/cache',
         'vendor/symfony/clock/Resources',
+        'vendor/symfony/config',
         'vendor/symfony/console/Attribute',
         'vendor/symfony/console/Command/InvokableCommand.php',
         'vendor/symfony/console/Command/TraceableCommand.php',
@@ -231,6 +241,7 @@ class ProjectGenerator
         'vendor/guzzlehttp/guzzle/src/Handler/CurlMultiHandler.php' => '.typephp/build/guzzle-curl-multi-handler.php',
         'vendor/workerman/workerman/src/Protocols/Websocket.php' => '.typephp/build/workerman-websocket.php',
         'vendor/zoujingli/ip2region/XdbSearcher.php' => '.typephp/build/ip2region-xdb-searcher.php',
+        'vendor/zoujingli/ip2region/src/ip2region/xdb/Util.php' => '.typephp/build/ip2region-v3-util.php',
         'vendor/workerman/webman-framework/src/App.php' => '.typephp/build/webman-app.php',
         'vendor/workerman/webman-framework/src/Config.php' => '.typephp/build/webman-config.php',
         'vendor/webman/captcha/src/CaptchaBuilder.php' => '.typephp/build/webman-captcha-builder.php',
@@ -240,6 +251,7 @@ class ProjectGenerator
         'vendor/nelexa/zip/src/Model/ZipEntry.php' => '.typephp/build/nelexa-zip-entry.php',
         'vendor/nelexa/zip/src/ZipFile.php' => '.typephp/build/nelexa-zip-file.php',
         'vendor/nelexa/zip/src/Util/FilesUtil.php' => '.typephp/build/nelexa-files-util.php',
+        'vendor/nelexa/zip/src/IO/Stream/ResponseStream.php' => '.typephp/build/nelexa-response-stream.php',
         'vendor/nesbot/carbon/src/Carbon/CarbonInterval.php' => '.typephp/build/carbon-interval.php',
         'vendor/nesbot/carbon/src/Carbon/CarbonTimeZone.php' => '.typephp/build/carbon-time-zone.php',
         'vendor/nesbot/carbon/lazy/Carbon/MessageFormatter/MessageFormatterMapperStrongType.php' => '.typephp/build/carbon-message-formatter-strong.php',
@@ -254,6 +266,9 @@ class ProjectGenerator
         'plugin/saiadmin/app/controller/system/SystemPostController.php' => '.typephp/build/saiadmin-system-post-controller.php',
         'plugin/saiadmin/app/controller/system/DataBaseController.php' => '.typephp/build/saiadmin-database-controller.php',
         'plugin/saiadmin/app/cache/ReflectionCache.php' => '.typephp/build/saiadmin-reflection-cache.php',
+        'plugin/saiadmin/app/cache/UserAuthCache.php' => '.typephp/build/saiadmin-user-auth-cache.php',
+        'plugin/saiadmin/app/cache/UserInfoCache.php' => '.typephp/build/saiadmin-user-info-cache.php',
+        'plugin/saiadmin/exception/SystemException.php' => '.typephp/build/saiadmin-system-exception.php',
         'vendor/ramsey/collection/src/DoubleEndedQueue.php' => '.typephp/build/ramsey-double-ended-queue.php',
         'vendor/ramsey/uuid/src/Converter/Time/PhpTimeConverter.php' => '.typephp/build/ramsey-php-time-converter.php',
         'vendor/topthink/think-orm/src/model/Collection.php' => '.typephp/build/think-orm-model-collection.php',
@@ -1073,14 +1088,64 @@ class ProjectGenerator
             . '        }'
             => '        // TypePHP v0.8 cannot expose compiled protected defaults through ReflectionClass.' . "\n"
                 . '        if ($controller === \plugin\saiadmin\app\controller\LoginController::class) {' . "\n"
-                . '            $data = [\'captcha\', \'login\'];' . "\n"
+                . '            $data = __SAIADMIN_LOGIN_NO_NEED_LOGIN__;' . "\n"
                 . '        } elseif ($controller === \plugin\saiadmin\app\controller\InstallController::class) {' . "\n"
-                . '            $data = [\'index\', \'install\'];' . "\n"
+                . '            $data = __SAIADMIN_INSTALL_NO_NEED_LOGIN__;' . "\n"
                 . '        } elseif (class_exists($controller)) {' . "\n"
                 . '            $ref = new ReflectionClass($controller);' . "\n"
                 . '            $data = $ref->getDefaultProperties()[\'noNeedLogin\'] ?? [];' . "\n"
                 . '        } else {' . "\n"
                 . '            $data = [];' . "\n"
+                . '        }',
+        ],
+        'plugin/saiadmin/app/cache/UserAuthCache.php' => [
+            '        if (is_array($role_id)) {' . "\n"
+            . '            $tags = [];' . "\n"
+            . '            foreach ($role_id as $id) {' . "\n"
+            . '                $tags[] = $cache[\'role\'] . $id;' . "\n"
+            . '            }' . "\n"
+            . '        } else {' . "\n"
+            . '            $tags = $cache[\'role\'] . $role_id;' . "\n"
+            . '        }' . "\n"
+            . '        return Cache::tag($tags)->clear();'
+            => '        if (is_array($role_id)) {' . "\n"
+                . '            $tags = [];' . "\n"
+                . '            foreach ($role_id as $id) {' . "\n"
+                . '                $tags[] = $cache[\'role\'] . $id;' . "\n"
+                . '            }' . "\n"
+                . '            return Cache::tag($tags)->clear();' . "\n"
+                . '        }' . "\n"
+                . '        $tag = $cache[\'role\'] . $role_id;' . "\n"
+                . '        return Cache::tag($tag)->clear();',
+        ],
+        'plugin/saiadmin/exception/SystemException.php' => [
+            ', Throwable $previous = null)' => ', ?Throwable $previous = null)',
+        ],
+        'vendor/nelexa/zip/src/IO/Stream/ResponseStream.php' => [
+            '    public function getMetadata($key = null)' . "\n"
+            . '    {' => '    public function getMetadata(?string $key = null)' . "\n"
+                . '    {',
+            '    public function tell()' . "\n"
+            . '    {' => '    public function tell(): int' . "\n"
+                . '    {',
+            '        return $this->stream ? ftell($this->stream) : false;'
+            => '        return (int) ($this->stream ? ftell($this->stream) : false);',
+            '    public function seek($offset, $whence = \SEEK_SET): void'
+            => '    public function seek(int $offset, int $whence = \SEEK_SET): void',
+            '    public function write($string)' . "\n"
+            . '    {' => '    public function write(string $string): int' . "\n"
+                . '    {',
+            '        return $this->stream !== null && $this->writable ? fwrite($this->stream, $string) : false;'
+            => '        return (int) ($this->stream !== null && $this->writable ? fwrite($this->stream, $string) : false);',
+            '    public function read($length): string'
+            => '    public function read(int $length): string',
+        ],
+        'vendor/zoujingli/ip2region/src/ip2region/xdb/Util.php' => [
+            '        if ($val < 0 && PHP_INT_SIZE == 4) {' . "\n"
+            . '            $val = sprintf("%u", $val);' . "\n"
+            . '        }'
+            => '        if ($val < 0 && PHP_INT_SIZE == 4) {' . "\n"
+                . '            return sprintf("%u", $val);' . "\n"
                 . '        }',
         ],
         'vendor/webman/captcha/src/CaptchaBuilder.php' => [
@@ -2350,6 +2415,9 @@ class ProjectGenerator
     public function discoverProjectGuardedSources(): array
     {
         $sources = [];
+        if (is_file($this->basePath . '/app/functions.php')) {
+            $sources['app/functions.php'] = '.typephp/build/app-functions.php';
+        }
         foreach (glob($this->basePath . '/plugin/*/app/functions.php') ?: [] as $sourceFile) {
             $plugin = basename(dirname(dirname($sourceFile)));
             if (!preg_match('/^[A-Za-z0-9_-]+$/', $plugin)) {
@@ -2432,6 +2500,34 @@ class ProjectGenerator
      */
     protected function prepareGuardedSource(string $sourceRel, string $content): string
     {
+        if ($sourceRel === 'vendor/cakephp/core/functions.php') {
+            $constantBlocks = <<<'PHP'
+                if (!defined('DS')) {
+                    /**
+                     * Defines DS as short form of DIRECTORY_SEPARATOR.
+                     */
+                    define('DS', DIRECTORY_SEPARATOR);
+                }
+
+                if (!defined('CAKE_DATE_RFC7231')) {
+                    define('CAKE_DATE_RFC7231', 'D, d M Y H:i:s \G\M\T');
+                }
+                PHP;
+            $content = str_replace($constantBlocks, '', $content, $constantCount);
+            $content = str_replace(
+                'namespace Cake\Core;',
+                "namespace {\nconst DS = DIRECTORY_SEPARATOR;\n"
+                . "const CAKE_DATE_RFC7231 = 'D, d M Y H:i:s \\\\G\\\\M\\\\T';\n}\n\nnamespace Cake\\Core {",
+                $content,
+                $namespaceCount,
+            );
+            if ($constantCount !== 1 || $namespaceCount !== 1) {
+                throw new \RuntimeException(
+                    'The CakePHP core constants no longer match the pinned AOT transform.',
+                );
+            }
+            return $content . "\n}\n";
+        }
         if ($sourceRel === 'vendor/nikic/fast-route/src/functions.php') {
             $content = str_replace('$options += [', '$options = $options + [', $content, $count);
             if ($count < 1 || str_contains($content, '$options += [')) {
@@ -2522,6 +2618,22 @@ class ProjectGenerator
             );
             if ($loaderCount !== 1) {
                 throw new \RuntimeException('The IP2Region function loader no longer matches the pinned AOT transform.');
+            }
+            return $content;
+        }
+        if ($sourceRel === 'vendor/zoujingli/ip2region/src/common.php') {
+            $content = (string) preg_replace(
+                "/\\s*if \\(!class_exists\\('Ip2Region'\\)\\) \\{\\s*"
+                . "require_once __DIR__ \\. '\\/src\\/Ip2Region\\.php';\\s*\\}/",
+                '',
+                $content,
+                1,
+                $loaderCount,
+            );
+            if ($loaderCount !== 1) {
+                throw new \RuntimeException(
+                    'The IP2Region v3 class loader no longer matches the pinned AOT transform.',
+                );
             }
             return $content;
         }
@@ -2885,12 +2997,30 @@ class ProjectGenerator
      */
     protected function patchSwitchTerminals(string $sourceRel, string $content): string
     {
+        if ($sourceRel === 'plugin/saiadmin/app/cache/UserInfoCache.php') {
+            return $this->patchSaiAdminUserInfoCache($content);
+        }
         foreach (self::SWITCH_TERMINAL_REPLACEMENTS[$sourceRel] ?? [] as $search => $replacement) {
+            if ($sourceRel === 'plugin/saiadmin/app/cache/ReflectionCache.php') {
+                $replacement = str_replace(
+                    ['__SAIADMIN_LOGIN_NO_NEED_LOGIN__', '__SAIADMIN_INSTALL_NO_NEED_LOGIN__'],
+                    [
+                        $this->readSaiAdminNoNeedLogin('LoginController.php'),
+                        $this->readSaiAdminNoNeedLogin('InstallController.php'),
+                    ],
+                    (string) $replacement,
+                );
+            }
             $matches = substr_count($content, $search);
             $expectedMatches = match (true) {
                 $sourceRel === 'vendor/topthink/think-orm/src/model/Collection.php' => 10,
+                $sourceRel === 'plugin/saiadmin/utils/Captcha.php',
                 str_starts_with($sourceRel, 'plugin/saiadmin/app/controller/'),
-                $sourceRel === 'plugin/saiadmin/app/cache/ReflectionCache.php' => 1,
+                $sourceRel === 'plugin/saiadmin/app/cache/ReflectionCache.php',
+                $sourceRel === 'plugin/saiadmin/app/cache/UserAuthCache.php',
+                $sourceRel === 'plugin/saiadmin/exception/SystemException.php',
+                $sourceRel === 'vendor/nelexa/zip/src/IO/Stream/ResponseStream.php',
+                $sourceRel === 'vendor/zoujingli/ip2region/src/ip2region/xdb/Util.php' => 1,
                 default => null,
             };
             if ($expectedMatches !== null && $matches !== $expectedMatches) {
@@ -2899,16 +3029,76 @@ class ProjectGenerator
                         => 'ThinkORM collection callback arity',
                     str_starts_with($sourceRel, 'plugin/saiadmin/app/controller/')
                         => 'controller request arity',
+                    $sourceRel === 'plugin/saiadmin/exception/SystemException.php'
+                        => 'system exception nullable cause',
+                    $sourceRel === 'vendor/nelexa/zip/src/IO/Stream/ResponseStream.php'
+                        => 'Nelexa PSR stream signature',
+                    $sourceRel === 'vendor/zoujingli/ip2region/src/ip2region/xdb/Util.php'
+                        => 'IP2Region v3 integer slot',
                     default => 'reflection',
                 };
                 throw new \RuntimeException(
-                    "SaiAdmin 6.1.1 {$rule} compatibility rule expected {$expectedMatches} match(es), "
+                    "SaiAdmin {$rule} compatibility rule expected {$expectedMatches} match(es), "
                     . "found {$matches}: {$sourceRel}.",
                 );
             }
             $content = str_replace($search, $replacement, $content);
         }
         return $content;
+    }
+
+    private function patchSaiAdminUserInfoCache(string $content): string
+    {
+        $pattern = '/        if \(is_array\(\$([a-z_]+)\)\) \{\n'
+            . '            \$tags = \[\];\n'
+            . '            foreach \(\$\1 as \$id\) \{\n'
+            . '                \$tags\[\] = \$cache\[\'([a-z]+)\'\] \. \$id;\n'
+            . '            \}\n'
+            . '        \} else \{\n'
+            . '            \$tags = \$cache\[\'\2\'\] \. \$\1;\n'
+            . '        \}\n'
+            . '        return Cache::tag\(\$tags\)->clear\(\);/';
+        $content = (string) preg_replace_callback(
+            $pattern,
+            static fn(array $matches): string =>
+                "        if (is_array(\${$matches[1]})) {\n"
+                . "            \$tags = [];\n"
+                . "            foreach (\${$matches[1]} as \$id) {\n"
+                . "                \$tags[] = \$cache['{$matches[2]}'] . \$id;\n"
+                . "            }\n"
+                . "            return Cache::tag(\$tags)->clear();\n"
+                . "        }\n"
+                . "        \$tag = \$cache['{$matches[2]}'] . \${$matches[1]};\n"
+                . '        return Cache::tag($tag)->clear();',
+            $content,
+            -1,
+            $count,
+        );
+        if ($count !== 3) {
+            throw new \RuntimeException(
+                "SaiAdmin cache tag compatibility rule expected 3 matches, found {$count}: "
+                . 'plugin/saiadmin/app/cache/UserInfoCache.php.',
+            );
+        }
+        return $content;
+    }
+
+    private function readSaiAdminNoNeedLogin(string $controller): string
+    {
+        $relative = 'plugin/saiadmin/app/controller/' . $controller;
+        $content = file_get_contents($this->basePath . '/' . $relative);
+        if ($content === false || preg_match(
+            '/protected\s+array\s+\$noNeedLogin\s*=\s*'
+            . '(\[\s*(?:\'[A-Za-z_][A-Za-z0-9_]*\'\s*(?:,\s*\'[A-Za-z_][A-Za-z0-9_]*\'\s*)*)?\]);/',
+            $content,
+            $matches,
+        ) !== 1) {
+            throw new \RuntimeException(
+                "SaiAdmin reflection compatibility rule requires a static noNeedLogin list: {$relative}.",
+            );
+        }
+
+        return $matches[1];
     }
 
     /**
@@ -3554,7 +3744,13 @@ class ProjectGenerator
             'vendor/workerman/workerman/src/Events/Swow.php',
             'vendor/workerman/coroutine/src/Pool.php',
             'vendor/workerman/coroutine/src/Utils/DestructionWatcher.php',
+            'vendor/cakephp/chronos/rector.php',
+            'vendor/cakephp/core/functions_global.php',
+            'vendor/league/container/examples',
+            'vendor/robmorgan/phinx/app',
+            'vendor/robmorgan/phinx/src/composer_autoloader.php',
             'vendor/zoujingli/ip2region/_test.php',
+            'vendor/zoujingli/ip2region/tests',
             'vendor/monolog/monolog/src/Monolog/Test',
             'vendor/tinywan/webman-mcp/src/config',
             'vendor/tinywan/webman-mcp/src/Install.php',
