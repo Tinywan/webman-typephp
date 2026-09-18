@@ -3784,8 +3784,6 @@ class ProjectGenerator
             'vendor/workerman/coroutine/src/Coroutine/Swow.php',
             'vendor/workerman/coroutine/src/WaitGroup/Swow.php',
             'vendor/workerman/workerman/src/Events/Swow.php',
-            'vendor/workerman/coroutine/src/Pool.php',
-            'vendor/workerman/coroutine/src/Utils/DestructionWatcher.php',
             'vendor/cakephp/chronos/rector.php',
             'vendor/cakephp/core/functions_global.php',
             'vendor/league/container/examples',

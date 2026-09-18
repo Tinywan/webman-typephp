@@ -70,8 +70,6 @@ return [
         'vendor/webman/database/src/support/MongoModel.php',
         'vendor/webman/captcha/src/Font',
         'vendor/workerman/channel',
-        'vendor/workerman/coroutine/src/Pool.php',
-        'vendor/workerman/coroutine/src/Utils/DestructionWatcher.php',
         'plugin/saiadmin/app/view',
         'plugin/saiadmin/public',
         'plugin/saiadmin/utils/code/stub',
@@ -217,8 +215,6 @@ return [
         'vendor/workerman/coroutine/src/Coroutine/Swoole.php',
         'vendor/workerman/coroutine/src/WaitGroup/Swoole.php',
         'vendor/workerman/workerman/src/Events/Swoole.php',
-        'vendor/workerman/coroutine/src/Pool.php',
-        'vendor/workerman/coroutine/src/Utils/DestructionWatcher.php',
         'vendor/zoujingli/ip2region/_test.php',
     ],
 ];

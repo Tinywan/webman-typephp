@@ -6,6 +6,12 @@ use Tinywan\Typephp\Compiler\ProjectGenerator;
 
 it('excludes optional non-Fiber coroutine backends from AOT', function (): void {
     $config = require dirname(__DIR__, 2) . '/src/config/plugin/tinywan/typephp/app.php';
+    expect($config['ignore'])
+        ->not->toContain('vendor/workerman/coroutine/src/Pool.php')
+        ->not->toContain('vendor/workerman/coroutine/src/Utils/DestructionWatcher.php');
+    expect($config['runtime_resources'])
+        ->not->toContain('vendor/workerman/coroutine/src/Pool.php')
+        ->not->toContain('vendor/workerman/coroutine/src/Utils/DestructionWatcher.php');
     foreach (['Swow', 'Swoole'] as $backend) {
         foreach (['Barrier', 'Channel', 'Context', 'Coroutine', 'WaitGroup'] as $component) {
             expect($config['ignore'])->toContain("vendor/workerman/coroutine/src/{$component}/{$backend}.php");

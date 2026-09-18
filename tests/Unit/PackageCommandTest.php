@@ -79,8 +79,8 @@ it('ships the v0.1.3 builder image in the plugin configuration', function (): vo
         ->toContain('vendor/webman/database/src/support/MongoModel.php')
         ->toContain('vendor/webman/captcha/src/Font')
         ->toContain('vendor/workerman/channel')
-        ->toContain('vendor/workerman/coroutine/src/Pool.php')
-        ->toContain('vendor/workerman/coroutine/src/Utils/DestructionWatcher.php')
+        ->not->toContain('vendor/workerman/coroutine/src/Pool.php')
+        ->not->toContain('vendor/workerman/coroutine/src/Utils/DestructionWatcher.php')
         ->toContain('vendor/voku/portable-ascii/src/voku/helper/data')
         ->toContain('vendor/zoujingli/ip2region/ip2region.xdb')
         ->toContain('plugin/saiadmin/utils/code/stub');
