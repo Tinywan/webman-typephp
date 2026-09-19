@@ -105,6 +105,8 @@ it('keeps the CompilerBase override compatible with the v0.8 native build platfo
         ->toContain('$useDeclaredToArray')
         ->toContain("\$this->objectTypeDeclaresMethod(\$receiverClass, '__call')")
         ->toContain('&& !$useObjectToArray')
+        ->toContain('SaiAdmin overlay: preserve dynamic late-static dispatch.')
+        ->toContain('Unexpected MethodCallTrait late-static optimization source')
         ->toContain("substr_count(\$source, \$before) !== 1");
     expect($nativeTypePatch)
         ->toContain('strcasecmp($class, $expected) === 0')

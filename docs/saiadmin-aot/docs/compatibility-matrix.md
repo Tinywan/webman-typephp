@@ -29,7 +29,7 @@ profile 不对 Webman、Workerman 或 SaiAdmin 增加版本白名单；依赖是
 | SaiAdmin | Linux amd64 编译/打包 | 隔离数据库业务验收 | 结论 |
 | --- | --- | --- | --- |
 | 6.1.1 | 通过 | 验证码、登录、用户信息、权限拒绝、普通 PHP 对照均通过 | 完整验证 |
-| 6.1.5 | 通过 | 尚未执行 | 构建支持；不能据此宣称业务运行已验收 |
+| 6.1.5 | 通过 | MySQL 下验证码、登录、用户信息、权限拒绝通过 | AOT 业务验证完成；普通 PHP 8.4 权限异常路径仍受上游隐式 nullable deprecation 影响 |
 
 SaiAdmin 6.1.5 的最小变更依赖组合新增 CakePHP Chronos `3.5.1`，
 CakePHP Core/Database/Datasource/Event/Utility `5.4.2`、League Container
@@ -42,6 +42,7 @@ CakePHP Core/Database/Datasource/Event/Utility `5.4.2`、League Container
 | 归属 | 问题类别 | AOT 处理 |
 | --- | --- | --- |
 | Webman / Workerman | 顶层守卫与初始化、固定参数回调、引用捕获、switch 落空、运行期清理 | 生成锁定结构的副本，并在入口补回等价初始化 |
+| Workerman Coroutine | Fiber 上下文与连接池对空 `ArrayObject`/`WeakMap` 的维度写入被 TypePHP 错译为读取 | 在 AOT 副本中使用等价的 `offsetSet()`，并保留缺失、重复及结构漂移失败 |
 | ThinkORM | 参数与局部变量类型漂移、动态解析调用参数数目、结果集跨类型、运行期连接状态清理、Collection 回调少声明键参数 | 生成类型稳定且调用参数显式的副本，并声明集合回调的值与键参数 |
 | Carbon | 变量变量、魔术单位调用、继承常量、DatePeriod 声明顺序和类型漂移 | 生成显式方法、常量和稳定局部变量副本 |
 | SaiAdmin | 验证码颜色/字体、编译类 protected 默认属性反射缺失、零参控制器无法接收 Webman 请求参数、缓存标签变量跨类型、异常原因隐式可空 | 使用随包字体；从当前源码静态提取登录与安装匿名动作；生成显式 `Request` 参数、类型稳定缓存分支和显式 nullable 异常副本 |
@@ -58,4 +59,5 @@ CakePHP Core/Database/Datasource/Event/Utility `5.4.2`、League Container
 - 将 macOS 原生产物当作 Linux portable-dir 发布。
 - 未来 SaiAdmin 或依赖版本的自动兼容。
 - 未经完整编译和业务验收的第三方插件。
+- PostgreSQL 业务运行尚未验收；当前完整数据库业务证据使用 MySQL 8.4。
 - 依赖动态 `include`、`eval`、闭包 rebinding 或不稳定魔术调用且无法静态等价转换的业务功能。

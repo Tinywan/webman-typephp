@@ -723,13 +723,27 @@ class ProjectGenerator
                     . "\n"
                     . '            }'
                     . "\n"
-                    . '            $this->connections[$connection] = $this->lastUsedTimes[$connection] = $this->lastHeartbeatTimes[$connection] = time();'
+                    . '            $timestamp = time();'
+                    . "\n"
+                    . '            $this->connections->offsetSet($connection, $timestamp);'
+                    . "\n"
+                    . '            $this->lastUsedTimes->offsetSet($connection, $timestamp);'
+                    . "\n"
+                    . '            $this->lastHeartbeatTimes->offsetSet($connection, $timestamp);'
                     . "\n"
                     . '            return $connection;'
                     . "\n"
                     . '        }'
                     . "\n"
                     . '        $placeholder = new stdClass;',
+            '        $this->connections[$connection] = $this->lastUsedTimes[$connection] = $this->lastHeartbeatTimes[$connection] = time();' =>
+                '        $timestamp = time();'
+                    . "\n"
+                    . '        $this->connections->offsetSet($connection, $timestamp);'
+                    . "\n"
+                    . '        $this->lastUsedTimes->offsetSet($connection, $timestamp);'
+                    . "\n"
+                    . '        $this->lastHeartbeatTimes->offsetSet($connection, $timestamp);',
         ],
         'vendor/workerman/workerman/src/Protocols/Websocket.php' => [
             'foreach ($connection->headers as $header) {' => 'foreach ($connection->headers as $responseHeader) {',
@@ -2019,7 +2033,7 @@ class ProjectGenerator
             'switch (preg_last_error()) {' => 'switch ((int) preg_last_error()) {',
         ],
         'vendor/symfony/polyfill-intl-grapheme/Grapheme.php' => [
-            "\\define('SYMFONY_GRAPHEME_CLUSTER_RX', ((float) \\PCRE_VERSION >= 10.44) ? '\\X' : Grapheme::GRAPHEME_CLUSTER_RX);" => "const SYMFONY_GRAPHEME_CLUSTER_RX = (\\PCRE_VERSION >= '10.44') ? '\\X' : Grapheme::GRAPHEME_CLUSTER_RX;",
+            "\\define('SYMFONY_GRAPHEME_CLUSTER_RX', ((float) \\PCRE_VERSION >= 10.44) ? '\\X' : Grapheme::GRAPHEME_CLUSTER_RX);" => 'const SYMFONY_GRAPHEME_CLUSTER_RX = Grapheme::GRAPHEME_CLUSTER_RX;',
         ],
         'vendor/symfony/translation/PseudoLocalizationTranslator.php' => [
             'mb_strlen($s, $encoding)' => '(int) mb_strlen($s, $encoding)',
@@ -3447,6 +3461,31 @@ class ProjectGenerator
     }
 
     /**
+     * ArrayObject dimension writes are emitted by TypePHP as read-modify-write
+     * operations. Writing a previously absent context key then raises an
+     * undefined-key warning, which Webman's error handler promotes to an
+     * exception. Explicit offsetSet() preserves the PHP write semantics.
+     */
+    protected function patchCoroutineFiberContextWrites(string $content): string
+    {
+        $replacements = [
+            'static::$nonFiberContext[$name] = $value;' => 'static::$nonFiberContext->offsetSet($name, $value);',
+            'static::$contexts[$fiber][$name] = $value;' => 'static::$contexts[$fiber]->offsetSet($name, $value);',
+        ];
+        foreach ($replacements as $search => $replace) {
+            $count = substr_count($content, $search);
+            if ($count !== 1) {
+                throw new \RuntimeException(
+                    'Coroutine Fiber context-write compatibility rule expected 1 match, ' . "found {$count}: {$search}",
+                );
+            }
+            $content = str_replace($search, $replace, $content);
+        }
+
+        return $content;
+    }
+
+    /**
      * 为含顶层引导调用的源文件生成剥离后的 AOT 专用版本
      *
      * 读取项目实际安装的 workerman 源文件（Http/Session、FileSessionHandler、
@@ -3474,7 +3513,11 @@ class ProjectGenerator
             if (!is_dir($directory) && !mkdir($directory, 0777, true) && !is_dir($directory)) {
                 throw new \RuntimeException('Unable to create the TypePHP build directory: ' . $directory);
             }
-            if (file_put_contents($targetFile, $this->stripStrayBootstrapCalls($content)) === false) {
+            $content = $this->stripStrayBootstrapCalls($content);
+            if ($sourceRel === 'vendor/workerman/coroutine/src/Context/Fiber.php') {
+                $content = $this->patchCoroutineFiberContextWrites($content);
+            }
+            if (file_put_contents($targetFile, $content) === false) {
                 throw new \RuntimeException('Unable to write the AOT stray-bootstrap source: ' . $targetFile);
             }
             $generated[] = $targetRel;

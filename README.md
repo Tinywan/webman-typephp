@@ -194,7 +194,11 @@ SaiAdmin 版本白名单。安全边界由 Composer 可安装约束、SaiAdmin �
 兼容规则预期命中数和完整编译共同保证；源码结构漂移会失败关闭。当前仍会精确校验
 ThinkORM `v3.0.34` 和 Carbon `3.13.2`，因为相关兼容规则尚未完成跨版本验证。
 
-已验证版本分层如下：SaiAdmin `6.1.1` 已完成 Linux amd64 编译、打包和隔离数据库业务验收；`6.1.5` 已完成 Linux amd64 完整编译与 portable-dir 校验，数据库业务验收尚未补齐。精确依赖组合和证据边界见 [支持矩阵](docs/saiadmin-aot/docs/compatibility-matrix.md) 与 [验证证据](docs/saiadmin-aot/docs/verification-evidence.md)。
+已验证版本分层如下：SaiAdmin `6.1.1` 与 `6.1.5` 均已完成 Linux amd64
+编译、打包和隔离 MySQL 业务验收。`6.1.5` 的普通 PHP 8.4 对照中，验证码、
+登录和用户信息通过；权限异常路径仍受上游隐式 nullable deprecation 影响，具体
+证据边界见 [支持矩阵](docs/saiadmin-aot/docs/compatibility-matrix.md) 与
+[验证证据](docs/saiadmin-aot/docs/verification-evidence.md)。
 
 profile 会自动发现根 `app/`、`support/`、SaiAdmin 核心和每个 `plugin/*/app/`，并编译完整 Composer 依赖树。兼容副本只写入 `.typephp/build/`，普通 PHP 源码不变。构建输出中的 `source-coverage.json` 逐项记录业务 PHP 是直接编译还是由哪个 AOT 副本替代；业务文件未分类、被排除却没有等价副本，或漂移到未知依赖版本时都会终止构建。
 

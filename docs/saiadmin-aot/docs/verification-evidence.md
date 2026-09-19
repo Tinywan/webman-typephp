@@ -188,9 +188,54 @@ business PHP leaked into portable-dir: 0
 `webman-typephp-saiadmin@sha256:5f4065b17fafc6eb86f6478f10a060211b5e9c396e8f64fa93f164b727195c5b`。
 它是本地验证候选，不替代发布时应固定的公开 builder digest。
 
-6.1.5 本轮没有创建或连接数据库，也没有创建测试账号，因此只证明编译、链接、
-覆盖和 portable-dir 完整性，不证明验证码、登录、用户信息或权限拒绝路径已经运行。
-在新的隔离数据库验收完成前，6.1.5 的状态是“构建支持”，不是“完整业务验收”。
+以上是 2026-09-18 的构建证据；后续数据库业务验收见下一节。
+
+## SaiAdmin 6.1.5 Linux amd64 MySQL 业务验收
+
+2026-09-19 使用 SaiAdmin `6.1.5`、Webman `v2.2.4`、Workerman `v5.2.2`、
+ThinkORM `v3.0.34` 和 Carbon `3.13.2` 重建 Linux amd64 portable-dir。builder
+为本地 PR 候选，镜像身份
+`sha256:c67c0d2635646a4c7122b7c6872d89a6e0e2495fa9211bca1a6769e87d601729`。
+
+```text
+TypePHP source generation: 2,231 / 2,231
+C++ compilation: 2,235 / 2,235
+Build and link exit code: 0
+Portable-dir contract: OK
+ELF: 64-bit LSB pie executable, x86-64
+first-party coverage: 151
+directly compiled: 134
+generated AOT copies: 17
+unclassified first-party PHP: 0
+business PHP leaked into portable-dir: 0
+Pest: 166 passed, 1,599 assertions
+Existing fixture warning: 1
+```
+
+本次产物身份：
+
+| 文件 | SHA-256 |
+| --- | --- |
+| `webman-server.bin` | `3305279e7c58791af36965ca6156fffcbb325dd0fd2eb0c32b1e31711c9a38b6` |
+| `build-manifest.json` | `483873bebb95694e0538e36b0df58c247abf52ce4412aca7632b9c59ba8dde9c` |
+| `source-coverage.json` | `8d9a6676322aff1bbecaa9c7525d7dc3ebac84c487d2f2690221d2253a54c76c` |
+
+运行环境使用无宿主 HTTP 端口映射的一次性容器网络和 MySQL 8.4。数据库由项目自带
+Phinx 迁移与 `PureSeeder` 初始化，并创建一个不绑定角色的临时账号。AOT 结果：
+
+| 路径 | HTTP | JSON 业务码 | 结果 |
+| --- | ---: | ---: | --- |
+| `GET /core/captcha` | 200 | 200 | UUID、图片和会话均生成 |
+| `POST /core/login`（管理员） | 200 | 200 | 返回 Bearer token |
+| `GET /core/system/user` | 200 | 200 | 返回管理员、角色和按钮 |
+| `POST /core/login`（无角色账号） | 200 | 200 | 返回 Bearer token |
+| `GET /core/user/index`（无角色账号） | 200 | 400 | 返回“权限不足” |
+
+普通 PHP 使用同一隔离 MySQL 对照：验证码、管理员登录和用户信息均返回业务码 200。
+权限拒绝路径在进入既有 `SystemException` 时，被 PHP 8.4 的隐式 nullable deprecation
+升级为 500。该异常类的 AOT 副本使用显式 nullable，AOT 权限拒绝已通过；普通 PHP
+源码未被 profile 修改。此项是 SaiAdmin 6.1.5 普通 PHP 8.4 基线缺口，不应误记为
+AOT 回归通过。验收结束后必须销毁临时账号、数据库和容器。
 
 ## macOS arm64 非 Docker 原生验收
 

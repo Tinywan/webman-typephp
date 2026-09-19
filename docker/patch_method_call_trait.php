@@ -70,6 +70,25 @@ if (substr_count($source, $before) !== 1) {
 }
 
 $patched = str_replace($before, $after, $source);
+
+$lateStaticBefore = <<<'PHP'
+    ): ?string {
+        if ($expr->args !== [] || !$this->classDef || !$this->methodDef) {
+PHP;
+$lateStaticAfter = <<<'PHP'
+    ): ?string {
+        // SaiAdmin overlay: preserve dynamic late-static dispatch.
+        return null;
+
+        if ($expr->args !== [] || !$this->classDef || !$this->methodDef) {
+PHP;
+if (str_contains($patched, 'private function parseExactLateStaticCall(')) {
+    if (substr_count($patched, $lateStaticBefore) !== 1) {
+        throw new RuntimeException('Unexpected MethodCallTrait late-static optimization source');
+    }
+    $patched = str_replace($lateStaticBefore, $lateStaticAfter, $patched);
+}
+
 if (file_put_contents($path, $patched) === false) {
     throw new RuntimeException("Unable to write {$path}");
 }

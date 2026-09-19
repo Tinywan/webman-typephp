@@ -48,6 +48,8 @@ it('bypasses the Workerman pool WeakMap placeholder outside coroutines in its AO
         "<?php\nnamespace Workerman\\Coroutine;\nclass Pool {\n"
         . "    public function createConnection(): object\n    {\n"
         . "        \$placeholder = new stdClass;\n"
+        . "        \$connection = new stdClass;\n"
+        . "        \$this->connections[\$connection] = \$this->lastUsedTimes[\$connection] = \$this->lastHeartbeatTimes[\$connection] = time();\n"
         . "        return \$placeholder;\n    }\n}\n",
     );
 
@@ -56,6 +58,10 @@ it('bypasses the Workerman pool WeakMap placeholder outside coroutines in its AO
         expect($generator->generateSwitchTerminalSources())->toContain('.typephp/build/workerman-coroutine-pool.php');
         expect(file_get_contents($directory . '/.typephp/build/workerman-coroutine-pool.php'))
             ->toContain('        if (!Coroutine::isCoroutine()) {')
+            ->toContain('            $this->connections->offsetSet($connection, $timestamp);')
+            ->toContain('        $this->connections->offsetSet($connection, $timestamp);')
+            ->not
+            ->toContain('$this->connections[$connection] = $this->lastUsedTimes[$connection]')
             ->toContain('        $placeholder = new stdClass;');
     } finally {
         removeTypephpTestDirectory($directory);
@@ -1145,8 +1151,7 @@ it('declares the Symfony Grapheme cluster expression without top-level execution
         expect($generator->generateSwitchTerminalSources())->toBe(['.typephp/build/symfony-grapheme.php']);
         $source = (string) file_get_contents($directory . '/.typephp/build/symfony-grapheme.php');
         expect($source)
-            ->toContain("const SYMFONY_GRAPHEME_CLUSTER_RX = (\\PCRE_VERSION >= '10.44') "
-            . "? '\\X' : Grapheme::GRAPHEME_CLUSTER_RX;")
+            ->toContain('const SYMFONY_GRAPHEME_CLUSTER_RX = Grapheme::GRAPHEME_CLUSTER_RX;')
             ->not->toContain('\\define(');
 
         file_put_contents(
@@ -1668,6 +1673,17 @@ it('strips stray top-level bootstrap calls into AOT sources', function (): void 
     file_put_contents(
         $coroutineDirectory . '/Context/Fiber.php',
         "<?php\nnamespace Workerman\\Coroutine\\Context;\nclass Fiber\n{\n"
+        . "    private static \\ArrayObject \$nonFiberContext;\n"
+        . "    private static \\WeakMap \$contexts;\n\n"
+        . "    public static function set(string \$name, mixed \$value): void\n"
+        . "    {\n"
+        . "        \$fiber = \\Fiber::getCurrent();\n"
+        . "        if (\$fiber === null) {\n"
+        . "            static::\$nonFiberContext[\$name] = \$value;\n"
+        . "            return;\n"
+        . "        }\n"
+        . "        static::\$contexts[\$fiber][\$name] = \$value;\n"
+        . "    }\n\n"
         . "    public static function initContext(): void\n    {\n    }\n}\n\nFiber::initContext();\n",
     );
     file_put_contents(
@@ -1706,6 +1722,12 @@ it('strips stray top-level bootstrap calls into AOT sources', function (): void 
         $session = (string) file_get_contents($directory . '/.typephp/build/http-session.php');
         expect(str_contains($session, '// Init session handler'))->toBeFalse();
         expect($session)->toContain("class Session\n{\n    public static function init(): void");
+        $fiberContext = (string) file_get_contents($directory . '/.typephp/build/coroutine-context-fiber.php');
+        expect($fiberContext)
+            ->toContain('static::$nonFiberContext->offsetSet($name, $value);')
+            ->toContain('static::$contexts[$fiber]->offsetSet($name, $value);')
+            ->not->toContain('static::$nonFiberContext[$name] = $value;')
+            ->not->toContain('static::$contexts[$fiber][$name] = $value;');
 
         expect($generator->generateNullableStaticSources())->toBe(['.typephp/build/coroutine-context.php']);
 
