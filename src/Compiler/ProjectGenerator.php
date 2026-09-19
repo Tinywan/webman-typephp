@@ -383,6 +383,7 @@ class ProjectGenerator
         'vendor/symfony/mime/Header/AbstractHeader.php' => '.typephp/build/symfony-mime-abstract-header.php',
         'vendor/symfony/mime/Header/ParameterizedHeader.php' => '.typephp/build/symfony-mime-parameterized-header.php',
         'vendor/symfony/polyfill-php80/Php80.php' => '.typephp/build/symfony-php80.php',
+        'vendor/symfony/polyfill-intl-grapheme/Grapheme.php' => '.typephp/build/symfony-grapheme.php',
         'vendor/symfony/translation/PseudoLocalizationTranslator.php' => '.typephp/build/symfony-pseudo-localization-translator.php',
         'vendor/illuminate/bus/Batch.php' => '.typephp/build/illuminate-bus-batch.php',
         'vendor/illuminate/collections/Enumerable.php' => '.typephp/build/illuminate-collections-enumerable.php',
@@ -2016,6 +2017,9 @@ class ProjectGenerator
         ],
         'vendor/symfony/polyfill-php80/Php80.php' => [
             'switch (preg_last_error()) {' => 'switch ((int) preg_last_error()) {',
+        ],
+        'vendor/symfony/polyfill-intl-grapheme/Grapheme.php' => [
+            "\\define('SYMFONY_GRAPHEME_CLUSTER_RX', ((float) \\PCRE_VERSION >= 10.44) ? '\\X' : Grapheme::GRAPHEME_CLUSTER_RX);" => "const SYMFONY_GRAPHEME_CLUSTER_RX = (\\PCRE_VERSION >= '10.44') ? '\\X' : Grapheme::GRAPHEME_CLUSTER_RX;",
         ],
         'vendor/symfony/translation/PseudoLocalizationTranslator.php' => [
             'mb_strlen($s, $encoding)' => '(int) mb_strlen($s, $encoding)',
@@ -3891,6 +3895,7 @@ class ProjectGenerator
                     && str_contains($content, 'protected function doRunCommand(')
                     => 1,
                 $sourceRel === 'vendor/symfony/http-kernel/Exception/ControllerDoesNotReturnResponseException.php' => 1,
+                $sourceRel === 'vendor/symfony/polyfill-intl-grapheme/Grapheme.php' => 1,
                 in_array(
                     $sourceRel,
                     [

@@ -1127,6 +1127,55 @@ it('selects the PHP 8.4 intl polyfill declarations for AOT', function (): void {
     }
 });
 
+it('declares the Symfony Grapheme cluster expression without top-level execution', function (): void {
+    $directory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'typephp-test-' . bin2hex(random_bytes(4));
+    $sourceDirectory = $directory . '/vendor/symfony/polyfill-intl-grapheme';
+    mkdir($sourceDirectory, 0777, true);
+    $definition =
+        "\\define('SYMFONY_GRAPHEME_CLUSTER_RX', ((float) \\PCRE_VERSION >= 10.44) "
+        . "? '\\X' : Grapheme::GRAPHEME_CLUSTER_RX);";
+    file_put_contents(
+        $sourceDirectory . '/Grapheme.php',
+        "<?php\nnamespace Symfony\\Polyfill\\Intl\\Grapheme;\n{$definition}\n"
+        . "final class Grapheme { public const GRAPHEME_CLUSTER_RX = 'fallback'; }\n",
+    );
+
+    try {
+        $generator = new ProjectGenerator($directory);
+        expect($generator->generateSwitchTerminalSources())->toBe(['.typephp/build/symfony-grapheme.php']);
+        $source = (string) file_get_contents($directory . '/.typephp/build/symfony-grapheme.php');
+        expect($source)
+            ->toContain("const SYMFONY_GRAPHEME_CLUSTER_RX = (\\PCRE_VERSION >= '10.44') "
+            . "? '\\X' : Grapheme::GRAPHEME_CLUSTER_RX;")
+            ->not->toContain('\\define(');
+
+        file_put_contents(
+            $sourceDirectory . '/Grapheme.php',
+            "<?php\nnamespace Symfony\\Polyfill\\Intl\\Grapheme;\nfinal class Grapheme {}\n",
+        );
+        expect(fn(): array => $generator->generateSwitchTerminalSources())
+            ->toThrow(
+                RuntimeException::class,
+                'compatibility rule expected 1 match(es), found 0: '
+                . 'vendor/symfony/polyfill-intl-grapheme/Grapheme.php',
+            );
+
+        file_put_contents(
+            $sourceDirectory . '/Grapheme.php',
+            "<?php\nnamespace Symfony\\Polyfill\\Intl\\Grapheme;\n{$definition}\n{$definition}\n"
+            . "final class Grapheme { public const GRAPHEME_CLUSTER_RX = 'fallback'; }\n",
+        );
+        expect(fn(): array => $generator->generateSwitchTerminalSources())
+            ->toThrow(
+                RuntimeException::class,
+                'compatibility rule expected 1 match(es), found 2: '
+                . 'vendor/symfony/polyfill-intl-grapheme/Grapheme.php',
+            );
+    } finally {
+        removeTypephpTestDirectory($directory);
+    }
+});
+
 it('skips host-provided guarded polyfills for native compilation', function (): void {
     $directory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'typephp-test-' . bin2hex(random_bytes(4));
     $sourceDirectory = $directory . '/vendor/symfony/polyfill-intl-grapheme';
