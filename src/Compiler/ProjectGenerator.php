@@ -397,6 +397,9 @@ class ProjectGenerator
         'vendor/illuminate/database/Eloquent/Relations/Concerns/CanBeOneOfMany.php' => '.typephp/build/illuminate-eloquent-can-be-one-of-many.php',
         'vendor/illuminate/filesystem/Filesystem.php' => '.typephp/build/illuminate-filesystem.php',
         'vendor/illuminate/http/Client/Response.php' => '.typephp/build/illuminate-http-client-response.php',
+        'vendor/illuminate/http/Resources/Json/JsonResource.php' => '.typephp/build/illuminate-json-resource.php',
+        'vendor/illuminate/http/Resources/Json/ResourceCollection.php' => '.typephp/build/illuminate-resource-collection.php',
+        'vendor/illuminate/http/Resources/JsonApi/JsonApiResource.php' => '.typephp/build/illuminate-json-api-resource.php',
         'vendor/symfony/http-foundation/Request.php' => '.typephp/build/symfony-http-foundation-request.php',
         'vendor/symfony/http-foundation/File/UploadedFile.php' => '.typephp/build/symfony-http-foundation-uploaded-file.php',
         'vendor/illuminate/redis/RedisManager.php' => '.typephp/build/illuminate-redis-manager.php',
@@ -2091,6 +2094,21 @@ class ProjectGenerator
             '        $callback = func_get_args()[0] ?? null;' . "\n\n" => '',
             '    public function throwIf($condition)' => '    public function throwIf($condition, $callback = null)',
             'return value($condition, $this) ? $this->throw(func_get_args()[1] ?? null) : $this;' => 'return value($condition, $this) ? $this->throw($callback) : $this;',
+        ],
+        'vendor/illuminate/http/Resources/Json/JsonResource.php' => [
+            '        return $this->toArray($request);' => '        return $this->toResourceArray($request);',
+            '    public function toArray(Request $request)' =>
+                "    public function toArray(): array\n"
+                    . "    {\n"
+                    . "        return \$this->resolve(\$this->resolveRequestFromContainer());\n"
+                    . "    }\n\n"
+                    . '    public function toResourceArray(Request $request)',
+        ],
+        'vendor/illuminate/http/Resources/Json/ResourceCollection.php' => [
+            '    public function toArray(Request $request)' => '    public function toResourceArray(Request $request)',
+        ],
+        'vendor/illuminate/http/Resources/JsonApi/JsonApiResource.php' => [
+            '        return $this->toArray($request);' => '        return $this->toResourceArray($request);',
         ],
         'vendor/symfony/http-foundation/Request.php' => [
             '        if ($this->isFromTrustedProxy() && $host = $this->getTrustedValues(self::HEADER_X_FORWARDED_HOST)) {'
@@ -3873,6 +3891,16 @@ class ProjectGenerator
                     && str_contains($content, 'protected function doRunCommand(')
                     => 1,
                 $sourceRel === 'vendor/symfony/http-kernel/Exception/ControllerDoesNotReturnResponseException.php' => 1,
+                in_array(
+                    $sourceRel,
+                    [
+                        'vendor/illuminate/http/Resources/Json/JsonResource.php',
+                        'vendor/illuminate/http/Resources/Json/ResourceCollection.php',
+                        'vendor/illuminate/http/Resources/JsonApi/JsonApiResource.php',
+                    ],
+                    true,
+                )
+                    => 1,
                 $sourceRel === 'app/process/Monitor.php' && str_contains($content, 'function checkFilesChange') => 1,
                 $sourceRel === 'vendor/nelexa/zip/src/Util/FilesUtil.php'
                     && str_starts_with($search, '                default:')

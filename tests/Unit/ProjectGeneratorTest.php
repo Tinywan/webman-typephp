@@ -3116,6 +3116,85 @@ it('declares Illuminate HTTP Response exception callbacks explicitly for AOT', f
     }
 });
 
+it('moves Illuminate JSON resource request transforms away from the TypePHP conversion keyword', function (): void {
+    $directory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'typephp-test-' . bin2hex(random_bytes(4));
+    mkdir($directory . '/vendor/illuminate/http/Resources/Json', 0777, true);
+    mkdir($directory . '/vendor/illuminate/http/Resources/JsonApi', 0777, true);
+    file_put_contents($directory . '/vendor/illuminate/http/Resources/Json/JsonResource.php', <<<'PHP'
+        <?php
+        class JsonResource
+        {
+            public function toAttributes(Request $request)
+            {
+                return $this->toArray($request);
+            }
+
+            public function toArray(Request $request)
+            {
+                return [];
+            }
+        }
+        PHP);
+    file_put_contents($directory . '/vendor/illuminate/http/Resources/Json/ResourceCollection.php', <<<'PHP'
+        <?php
+        class ResourceCollection extends JsonResource
+        {
+            public function toArray(Request $request)
+            {
+                return [];
+            }
+        }
+        PHP);
+    file_put_contents($directory . '/vendor/illuminate/http/Resources/JsonApi/JsonApiResource.php', <<<'PHP'
+        <?php
+        class JsonApiResource extends JsonResource
+        {
+            public function toAttributes(Request $request)
+            {
+                return $this->toArray($request);
+            }
+        }
+        PHP);
+
+    try {
+        $generator = new ProjectGenerator($directory);
+        expect($generator->generateSwitchTerminalSources())->toBe([
+            '.typephp/build/illuminate-json-resource.php',
+            '.typephp/build/illuminate-resource-collection.php',
+            '.typephp/build/illuminate-json-api-resource.php',
+        ]);
+        $resource = (string) file_get_contents($directory . '/.typephp/build/illuminate-json-resource.php');
+        $collection = (string) file_get_contents($directory . '/.typephp/build/illuminate-resource-collection.php');
+        $jsonApi = (string) file_get_contents($directory . '/.typephp/build/illuminate-json-api-resource.php');
+        expect($resource)
+            ->toContain('public function toArray(): array')
+            ->toContain('return $this->resolve($this->resolveRequestFromContainer());')
+            ->toContain('public function toResourceArray(Request $request)')
+            ->toContain('return $this->toResourceArray($request);')
+            ->not->toContain('public function toArray(Request $request)');
+        expect($collection)
+            ->toContain('public function toResourceArray(Request $request)')
+            ->not->toContain('public function toArray(Request $request)');
+        expect($jsonApi)
+            ->toContain('return $this->toResourceArray($request);')
+            ->not->toContain('return $this->toArray($request);');
+
+        file_put_contents($directory . '/vendor/illuminate/http/Resources/Json/JsonResource.php', str_replace(
+            'return $this->toArray($request);',
+            'return [];',
+            (string) file_get_contents($directory . '/vendor/illuminate/http/Resources/Json/JsonResource.php'),
+        ));
+        expect(fn(): array => $generator->generateSwitchTerminalSources())
+            ->toThrow(
+                RuntimeException::class,
+                'compatibility rule expected 1 match(es), found 0: '
+                . 'vendor/illuminate/http/Resources/Json/JsonResource.php',
+            );
+    } finally {
+        removeTypephpTestDirectory($directory);
+    }
+});
+
 it('expands Blueprint integer compact options for AOT', function (): void {
     $directory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'typephp-test-' . bin2hex(random_bytes(4));
     mkdir($directory . '/vendor/illuminate/database/Schema', 0777, true);
